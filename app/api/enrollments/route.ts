@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { EnrollmentRequest, EnrollmentResponse } from '@/lib/types/api';
 import { registerContactForZoomEvent } from '@/lib/zoom/registration';
+import { inngest } from '@/inngest/client';
 
 /**
  * Validate email format
@@ -307,7 +308,7 @@ export async function POST(request: NextRequest) {
     // Verify event exists
     const { data: event, error: eventError } = await db
       .from('events')
-      .select('id, title, platform, status, current_registrations, max_registrations')
+      .select('id, title, platform, status, current_registrations, max_registrations, scheduled_at, duration_minutes, timezone, platform_event_id')
       .eq('id', body.eventId)
       .maybeSingle();
 
@@ -415,7 +416,29 @@ export async function POST(request: NextRequest) {
     // Log activity
     await logActivity(contact.id, event.id, registration.id, event.title);
 
-    // TODO: Trigger pre-event drip campaign via Inngest
+    // Trigger pre-event drip campaign via Inngest
+    try {
+      await inngest.send({
+        name: 'event.enrolled',
+        data: {
+          contactId: contact.id,
+          eventId: event.id,
+          registrationId: registration.id,
+          eventTitle: event.title,
+          scheduledAt: event.scheduled_at,
+          contactEmail: contact.email,
+          contactFirstName: contact.first_name,
+          contactLastName: contact.last_name,
+          contactPhone: contact.phone,
+          joinUrl: joinUrl,
+        },
+      });
+
+      console.log(`[enrollment] Triggered pre-event funnel for contact ${contact.email} - Event: ${event.title}`);
+    } catch (inngestError: any) {
+      // Log but don't fail the enrollment
+      console.error('[enrollment] Failed to trigger Inngest funnel:', inngestError);
+    }
 
     // Return success response
     return NextResponse.json<EnrollmentResponse>(

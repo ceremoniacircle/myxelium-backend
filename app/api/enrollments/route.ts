@@ -4,13 +4,15 @@
  * Enrolls a contact in an event:
  * 1. Creates or updates contact record
  * 2. Creates event registration
- * 3. Registers with external platform (Zoom, etc.) - TODO
- * 4. Triggers drip campaign - TODO
+ * 3. Registers with Zoom (Meetings or Webinars)
+ * 4. Returns unique join URL
+ * 5. Triggers drip campaign (TODO)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { EnrollmentRequest, EnrollmentResponse } from '@/lib/types/api';
+import { registerContactForZoomEvent } from '@/lib/zoom/registration';
 
 /**
  * Validate email format
@@ -356,10 +358,63 @@ export async function POST(request: NextRequest) {
     // Create registration
     const registration = await createRegistration(contact.id, event.id, body);
 
+    // Register with Zoom (if platform is zoom_meeting or zoom_webinar)
+    let joinUrl: string | undefined;
+
+    if (event.platform === 'zoom_meeting' || event.platform === 'zoom_webinar') {
+      try {
+        const zoomRegistration = await registerContactForZoomEvent(
+          {
+            id: contact.id,
+            email: contact.email,
+            first_name: contact.first_name,
+            last_name: contact.last_name,
+            phone: contact.phone
+          },
+          {
+            id: event.id,
+            title: event.title,
+            platform: event.platform,
+            platform_event_id: event.platform_event_id,
+            scheduled_at: event.scheduled_at,
+            duration_minutes: event.duration_minutes,
+            timezone: event.timezone || 'America/Los_Angeles'
+          },
+          body.formData
+        );
+
+        // Update registration with Zoom details
+        await db
+          .from('registrations')
+          .update({
+            platform_registrant_id: zoomRegistration.platformRegistrantId,
+            platform_join_url: zoomRegistration.joinUrl,
+            platform_metadata: zoomRegistration.platformMetadata
+          })
+          .eq('id', registration.id);
+
+        joinUrl = zoomRegistration.joinUrl;
+      } catch (zoomError: any) {
+        // Log Zoom error but don't fail the entire enrollment
+        console.error('Zoom registration failed:', zoomError);
+
+        // Update registration status to indicate Zoom failure
+        await db
+          .from('registrations')
+          .update({
+            status: 'registered', // Still registered locally
+            platform_metadata: {
+              zoom_error: zoomError.message,
+              zoom_error_time: new Date().toISOString()
+            }
+          })
+          .eq('id', registration.id);
+      }
+    }
+
     // Log activity
     await logActivity(contact.id, event.id, registration.id, event.title);
 
-    // TODO: Register with external platform (Zoom, Calendly, etc.)
     // TODO: Trigger pre-event drip campaign via Inngest
 
     // Return success response
@@ -370,6 +425,7 @@ export async function POST(request: NextRequest) {
           registrationId: registration.id,
           contactId: contact.id,
           eventId: event.id,
+          joinUrl: joinUrl,
           message: `Successfully registered for ${event.title}`
         }
       },

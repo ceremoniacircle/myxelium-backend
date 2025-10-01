@@ -2,7 +2,7 @@
  * Generic Message Sender Function
  *
  * Reusable Inngest function for sending messages across channels.
- * Currently logs messages as placeholders for Resend/Twilio integration.
+ * Integrated with Resend for email delivery and placeholder for SMS/Twilio.
  */
 
 import { inngest } from '@/inngest/client';
@@ -14,6 +14,9 @@ import {
   type MessageChannel,
   type TemplateType,
 } from '@/lib/inngest/helpers';
+import { resend, DEFAULT_FROM, isResendConfigured } from '@/lib/resend/client';
+import { personalizeTemplate, buildPersonalizationData, textToHtml } from '@/lib/resend/helpers';
+import { NonRetriableError } from 'inngest';
 
 interface SendMessageInput {
   contactId: string;
@@ -134,33 +137,180 @@ export const sendMessage = inngest.createFunction(
       });
     });
 
-    // Step 4: Send message (placeholder - will integrate Resend/Twilio later)
+    // Step 4: Send message via Resend (email) or placeholder (SMS)
     const sendResult = await step.run('send-message', async () => {
-      console.log('\n=== MESSAGE SEND (PLACEHOLDER) ===');
-      console.log(`Message ID: ${messageId}`);
-      console.log(`Channel: ${channel}`);
-      console.log(`Template: ${templateType}`);
-      console.log(`Contact: ${contact.first_name} ${contact.last_name} (${contact.email})`);
-      console.log(`Recipient: ${channel === 'email' ? contact.email : contact.phone}`);
+      if (channel === 'email') {
+        // === EMAIL SENDING VIA RESEND ===
 
-      if (eventData) {
-        console.log(`Event: ${eventData.title}`);
-        console.log(`Scheduled: ${eventData.scheduled_at}`);
+        // Check if Resend is configured
+        if (!isResendConfigured()) {
+          const error = 'Resend API key not configured. Set RESEND_API_KEY environment variable.';
+          console.error(`[send-message] ${error}`);
+          throw new NonRetriableError(error);
+        }
+
+        // Validate recipient email
+        if (!contact.email) {
+          const error = 'Contact has no email address';
+          console.error(`[send-message] ${error} - Contact ID: ${contactId}`);
+          throw new NonRetriableError(error);
+        }
+
+        // Build personalization data
+        const personalizationData = buildPersonalizationData(contact, eventData, registration);
+
+        // Build subject and body (with template variables replaced)
+        let subject: string;
+        let bodyText: string;
+        let bodyHtml: string;
+
+        switch (templateType) {
+          case 'welcome-email':
+            subject = personalizeTemplate(
+              "You're registered for {{eventTitle}}!",
+              personalizationData
+            );
+            bodyText = personalizeTemplate(
+              `Hi {{firstName}},\n\nYou're all set for "{{eventTitle}}"!\n\nJoin URL: {{joinUrl}}\n\nSee you there!\n\nBest,\nThe Ceremonia Team`,
+              personalizationData
+            );
+            bodyHtml = textToHtml(bodyText);
+            break;
+
+          case 'reminder-24h':
+            subject = personalizeTemplate(
+              'Tomorrow: {{eventTitle}}',
+              personalizationData
+            );
+            bodyText = personalizeTemplate(
+              `Hi {{firstName}},\n\nReminder: "{{eventTitle}}" is happening tomorrow!\n\nEvent Date: {{eventDate}}\n\nJoin URL: {{joinUrl}}\n\nSee you soon!\n\nBest,\nThe Ceremonia Team`,
+              personalizationData
+            );
+            bodyHtml = textToHtml(bodyText);
+            break;
+
+          case 'reminder-1h':
+            subject = personalizeTemplate(
+              'Starting in 1 hour: {{eventTitle}}',
+              personalizationData
+            );
+            bodyText = personalizeTemplate(
+              `Hi {{firstName}},\n\n"{{eventTitle}}" starts in 1 hour!\n\nJoin now: {{joinUrl}}\n\nSee you there!\n\nBest,\nThe Ceremonia Team`,
+              personalizationData
+            );
+            bodyHtml = textToHtml(bodyText);
+            break;
+
+          case 'thank-you':
+            subject = personalizeTemplate(
+              'Thank you for attending {{eventTitle}}!',
+              personalizationData
+            );
+            bodyText = personalizeTemplate(
+              `Hi {{firstName}},\n\nThank you for joining "{{eventTitle}}"!\n\n${eventData?.replay_url ? `Replay: ${eventData.replay_url}` : 'Replay coming soon!'}\n\nWe hope you enjoyed it!\n\nBest,\nThe Ceremonia Team`,
+              personalizationData
+            );
+            bodyHtml = textToHtml(bodyText);
+            break;
+
+          case 'sorry-missed':
+            subject = personalizeTemplate(
+              'We missed you at {{eventTitle}}',
+              personalizationData
+            );
+            bodyText = personalizeTemplate(
+              `Hi {{firstName}},\n\nWe missed you at "{{eventTitle}}"!\n\n${eventData?.replay_url ? `Watch the replay: ${eventData.replay_url}` : 'Replay coming soon!'}\n\nHope to see you next time!\n\nBest,\nThe Ceremonia Team`,
+              personalizationData
+            );
+            bodyHtml = textToHtml(bodyText);
+            break;
+
+          default:
+            subject = 'Message from Ceremonia';
+            bodyText = personalizeTemplate(
+              `Hi {{firstName}},\n\nYou have a message.\n\nBest,\nThe Ceremonia Team`,
+              personalizationData
+            );
+            bodyHtml = textToHtml(bodyText);
+        }
+
+        try {
+          console.log(`[send-message] Sending email to ${contact.email} via Resend`);
+          console.log(`[send-message] Template: ${templateType}, Subject: ${subject}`);
+
+          // Send email via Resend
+          const { data, error } = await resend.emails.send({
+            from: DEFAULT_FROM,
+            to: contact.email,
+            subject,
+            html: bodyHtml,
+            text: bodyText,
+          });
+
+          if (error) {
+            // Handle Resend-specific errors
+            console.error('[send-message] Resend API error:', error);
+
+            // Check for rate limiting (429)
+            if (error.message?.includes('rate limit') || error.message?.includes('429')) {
+              // Throw retriable error for rate limiting - Inngest will retry with backoff
+              throw new Error(`Rate limit exceeded: ${error.message}`);
+            }
+
+            // Check for invalid recipient (non-retriable)
+            if (
+              error.message?.includes('invalid') ||
+              error.message?.includes('bounce') ||
+              error.message?.includes('unsubscribe')
+            ) {
+              throw new NonRetriableError(`Invalid recipient: ${error.message}`);
+            }
+
+            // Other errors - retriable
+            throw new Error(`Resend error: ${error.message}`);
+          }
+
+          console.log(`[send-message] Email sent successfully - Resend ID: ${data?.id}`);
+
+          return {
+            success: true,
+            providerMessageId: data?.id || `resend-${Date.now()}`,
+            provider: 'resend',
+          };
+        } catch (error: any) {
+          // Re-throw NonRetriableError as-is
+          if (error instanceof NonRetriableError) {
+            throw error;
+          }
+
+          // Log and re-throw for Inngest retry logic
+          console.error('[send-message] Error sending email:', error);
+          throw error;
+        }
+      } else if (channel === 'sms') {
+        // === SMS SENDING (PLACEHOLDER - TODO: Integrate Twilio) ===
+        console.log('\n=== SMS SEND (PLACEHOLDER) ===');
+        console.log(`Message ID: ${messageId}`);
+        console.log(`Template: ${templateType}`);
+        console.log(`Contact: ${contact.first_name} ${contact.last_name}`);
+        console.log(`Phone: ${contact.phone}`);
+
+        if (eventData) {
+          console.log(`Event: ${eventData.title}`);
+        }
+
+        console.log('=================================\n');
+
+        // Simulate successful send
+        return {
+          success: true,
+          providerMessageId: `twilio-placeholder-${Date.now()}`,
+          provider: 'twilio',
+        };
+      } else {
+        // Unsupported channel
+        throw new NonRetriableError(`Unsupported channel: ${channel}`);
       }
-
-      if (registration?.platform_join_url) {
-        console.log(`Join URL: ${registration.platform_join_url}`);
-      }
-
-      console.log('=================================\n');
-
-      // Simulate successful send
-      // TODO: Replace with actual Resend/Twilio integration
-      return {
-        success: true,
-        providerMessageId: `placeholder-${Date.now()}`,
-        provider: channel === 'email' ? 'resend' : 'twilio',
-      };
     });
 
     // Step 5: Update message status

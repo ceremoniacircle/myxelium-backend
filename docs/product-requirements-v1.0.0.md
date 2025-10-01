@@ -1,7 +1,7 @@
-# Product Requirements Document v1.0.0
+# Product Requirements Document v1.1.0
 *Myxelium: Event Funnel Orchestration API*
 
-**Document Version:** 1.0.0
+**Document Version:** 1.1.0
 **Last Updated:** 2025-09-30
 **Status:** In Progress
 **Owner:** Austin Mao
@@ -16,27 +16,44 @@
   - Commits: `1ad22b9` and earlier
 - **Enrollment API**: POST /api/enrollments endpoint
   - Creates contacts, registrations, handles consent
+  - Triggers Inngest pre-event funnel
   - Commit: `fe382f0`
-- **Zoom Integration**: Full Meetings + Webinars support
+- **Zoom Integration**: Full Meetings + Webinars API support implemented
   - OAuth client with token caching (`lib/zoom/client.ts`)
-  - Registration service (`lib/zoom/registration.ts`)
+  - Registration service supports both platforms (`lib/zoom/registration.ts`)
   - Platform detection (zoom_meeting vs zoom_webinar)
+  - **Current capability**: Can register users for either type
+  - **Production use**: Using Meetings only (Pro plan). Webinars ready when add-on activated.
   - Returns unique join URLs
   - Test scripts for validation
   - Commits: `2ae25e0`, `4504481`, `166b864`, `fe382f0`, `89865d8`, `1ad22b9`
+- **Inngest Job Queue System**: Full implementation complete
+  - Client configuration (`inngest/client.ts`)
+  - Pre-event funnel with 3-step sequence (welcome, T-24h, T-1h)
+  - Post-event funnel with branching logic (attended vs no-show)
+  - Generic message sender with consent checking
+  - Database helpers for message tracking
+  - API route for webhook handler (`/api/inngest`)
+  - Test scripts for local development
+  - Documentation and quick start guide
+  - **Status**: Ready for testing (placeholder logging for messages)
+  - **Next**: Integrate Resend/Twilio for actual delivery
 
-### 🚧 Next Up (Week 2)
-- **Job Queue System**: BullMQ + Redis for campaign orchestration
+### 🚧 Next Up (Week 2-3)
 - **Email Provider**: Resend integration for transactional emails
 - **SMS Provider**: Twilio integration for SMS delivery
-- **Drip Campaigns**: Pre-event sequence (welcome, T-24h, T-1h)
+- **Webhook Handlers**:
+  - Resend webhooks for email engagement
+  - Twilio webhooks for SMS delivery status
+  - Zoom webhooks for attendance tracking
+- **Content API**: Integration with external content generation service
 
-### ⏳ Pending (Week 3-6)
-- Post-event drip campaigns (attended vs no-show paths)
-- Webhook handlers for engagement tracking
-- Zoom webhooks for attendance tracking
+### ⏳ Pending (Week 4-6)
 - Admin endpoints for campaign management
+- Analytics dashboard
 - Testing and production deployment
+- Performance optimization
+- Security audit
 
 ---
 
@@ -65,12 +82,14 @@
 - **Abstraction**: Events table supports both via `platform` field (`zoom_meeting` or `zoom_webinar`)
 
 ### Success Criteria (MVP - 6 weeks)
-- ✅ Successfully enroll 50+ users in live events via form submission
-- ✅ Execute 3-step pre-event drip (welcome → T-24h → T-1h)
-- ✅ Execute 3-step post-event drip (attended vs. no-show paths)
-- ✅ 99%+ job completion rate (excluding provider failures)
-- ✅ <5 second latency from form submit to Zoom enrollment
-- ✅ Total infrastructure cost <$50/month
+- ✅ Successfully enroll 50+ users in live events via form submission (99%+ success rate)
+- ✅ Execute 3-step pre-event drip (welcome → T-24h → T-1h) with 95%+ delivery rate
+- ✅ Execute 3-step post-event drip (attended vs. no-show paths) with 95%+ delivery rate
+- ✅ 99%+ job completion rate (excluding provider failures, measured in Inngest dashboard)
+- ✅ <5 second P95 latency from form submit to Zoom enrollment + welcome email queued
+- ✅ <2 second P95 latency for API response to user (enrollment confirmation)
+- ✅ Total infrastructure cost <$50/month (measured via billing dashboard)
+- ✅ Zero security incidents (no unauthorized access, no data breaches)
 
 ### Success Criteria (Year 1)
 - 50K contacts enrolled across 100+ events (meetings + webinars)
@@ -105,7 +124,7 @@
 **Future State:**
 1. User submits form → instant Zoom enrollment + confirmation email
 2. Automated T-24h and T-1h reminders (email + SMS)
-3. Post-webinar: branching sequences (attended → nurture, no-show → replay)
+3. Post-event: branching sequences (attended → nurture, no-show → replay)
 4. Real-time engagement tracking and behavioral triggers
 
 ---
@@ -116,10 +135,10 @@
 
 #### 1. Contact Management
 - **API Endpoint**: `POST /api/enrollments`
-- **Input**: email, firstName, lastName, phone, webinarId, customFields
-- **Output**: enrollmentId, zoomJoinUrl, scheduledSteps
+- **Input**: email, firstName, lastName, phone, eventId, timezone, smsConsent, customFields
+- **Output**: enrollmentId, contactId, zoomJoinUrl, scheduledSteps, status
 - **Database**: Store contacts with consent flags, timezone, custom attributes
-- **Deduplication**: Handle re-submissions (update vs. create)
+- **Deduplication**: Upsert based on email+eventId unique constraint
 
 #### 2. Zoom Event Integration (Meetings + Webinars)
 - **Platform Detection**: Automatically detect event type (`zoom_meeting` or `zoom_webinar`)
@@ -156,13 +175,15 @@
 - T+7d: Final follow-up (low priority)
 
 #### 5. Job Queue/Scheduler
-- **Technology**: Inngest (serverless, visual debugging)
+- **Technology**: Inngest (committed for MVP and production)
+- **Future consideration**: If costs exceed $150/month at scale, evaluate self-hosted alternatives
 - **Capabilities**:
   - Delayed execution (sleepUntil for T-24h, T-1h)
   - Automatic retries with exponential backoff
   - Idempotency (prevent duplicate sends)
   - Dead letter queue (DLQ) for failed jobs
-- **Triggers**: Event-based (`webinar.enrolled`, `webinar.completed`)
+  - Visual debugging dashboard
+- **Triggers**: Event-based (`event.enrolled`, `event.completed`)
 
 #### 6. Multi-Channel Sending
 - **Email Provider**: Resend (MVP), SendGrid (future)
@@ -180,35 +201,35 @@
 
 ### Standard Features (Post-MVP - Should Have)
 
-#### 8. Behavioral Triggers
-- **Email Opened → High Intent**: If user opens 2+ emails, escalate to SMS
-- **Link Clicked → Hot Lead**: Tag contact, trigger priority sequence
-- **Not Opened → Re-engagement**: After 48h no open, send SMS reminder
-
-#### 9. Calendar Integration
+#### 8. Calendar Integration
 - **Generate .ics Files**: Universal calendar format
 - **Email Attachment**: Include in welcome email
 - **Add-to-Calendar Links**: Google Calendar, Outlook direct links
 
-#### 10. Funnel Analytics Dashboard
+#### 9. Funnel Analytics Dashboard
 - **Enrollment Metrics**: Total enrollments, attendance rate, conversion rate
 - **Email Performance**: Sent, delivered, opened, clicked per step
 - **SMS Performance**: Sent, delivered per step
 - **Funnel Visualization**: Drop-off rates at each step
 
-#### 11. Webhook Infrastructure
+#### 10. Webhook Infrastructure
 - **Resend Webhooks**: `/api/webhooks/resend` for email events
 - **Twilio Webhooks**: `/api/webhooks/twilio` for SMS events
 - **Zoom Webhooks**: `/api/webhooks/zoom` for attendance
 - **Signature Verification**: Validate all incoming webhooks
 
-#### 12. Admin UI
-- **Webinar List**: View all webinars, enrollments, status
-- **Funnel Performance**: See metrics per webinar/campaign
+#### 11. Admin UI
+- **Event List**: View all events, enrollments, status
+- **Funnel Performance**: See metrics per event/campaign
 - **Contact Detail View**: See all messages sent to a contact
 - **Manual Triggers**: Ability to manually send a message or cancel jobs
 
 ### Future Considerations (Nice to Have)
+
+#### 12. Behavioral Triggers
+- **Email Opened → High Intent**: If user opens 2+ emails, escalate to SMS
+- **Link Clicked → Hot Lead**: Tag contact, trigger priority sequence
+- **Not Opened → Re-engagement**: After 48h no open, send SMS reminder
 
 #### 13. A/B Testing
 - **Template Variants**: Test subject lines, email copy, send times
@@ -270,24 +291,24 @@
 
 **Core Tables:**
 - `contacts` - Contact records with consent, timezone, custom fields
-- `webinars` - Webinar details, Zoom IDs, scheduled times
-- `enrollments` - Links contacts to webinars, tracks attendance
+- `events` - Event details (Zoom Meetings/Webinars), scheduled times, platform type
+- `registrations` - Links contacts to events, tracks attendance status
 - `campaigns` - Funnel definitions (steps, delays, conditions)
-- `message_templates` - Template metadata (references external content)
-- `scheduled_jobs` - Queued work (managed by Inngest)
-- `sent_messages` - Delivery audit log with engagement tracking
+- `campaign_messages` - Message templates in campaign sequences
+- `jobs` - Queued work (managed by Inngest)
+- `message_sends` - Delivery audit log with engagement tracking
 
 **Key Relationships:**
-- enrollment → contact (many-to-one)
-- enrollment → webinar (many-to-one)
-- sent_message → enrollment (many-to-one)
-- sent_message → template (many-to-one)
+- registration → contact (many-to-one)
+- registration → event (many-to-one)
+- message_send → registration (many-to-one)
+- campaign_message → campaign (many-to-one)
 
 ### API Endpoints
 
 **Public API:**
-- `POST /api/enrollments` - Enroll contact in webinar funnel
-- `GET /api/webinars/:id` - Get webinar details (public)
+- `POST /api/enrollments` - Enroll contact in event funnel
+- `GET /api/events/:id` - Get event details (public)
 
 **Webhook Receivers:**
 - `POST /api/webhooks/zoom` - Zoom attendance events
@@ -295,15 +316,63 @@
 - `POST /api/webhooks/twilio` - SMS delivery/reply events
 
 **Admin API:**
-- `GET /api/admin/webinars` - List all webinars
+- `GET /api/admin/events` - List all events
+- `GET /api/admin/events/:id/cancel` - Cancel event and stop all campaigns
 - `GET /api/admin/funnels/:id/analytics` - Funnel performance metrics
 - `GET /api/admin/contacts/:id` - Contact detail with message history
 - `POST /api/admin/messages/send` - Manual message send (testing)
 
 **Inngest Functions:**
-- `inngest/webinar-funnel` - Pre-webinar drip sequence
-- `inngest/post-webinar-funnel` - Post-webinar branching sequences
+- `inngest/event-funnel` - Pre-event drip sequence
+- `inngest/post-event-funnel` - Post-event branching sequences
 - `inngest/send-message` - Generic message sending with retries
+
+### API Endpoint Specifications
+
+#### POST /api/enrollments
+
+**Request Schema (Zod):**
+```typescript
+{
+  email: string (email format, required),
+  firstName: string (1-100 chars, required),
+  lastName: string (1-100 chars, required),
+  phone: string (E.164 format, optional),
+  eventId: uuid (required),
+  timezone: string (IANA timezone, optional, defaults to America/Denver),
+  smsConsent: boolean (required if phone provided),
+  customFields: Record<string, string | number | boolean> (optional)
+}
+```
+
+**Response (Success 200):**
+```json
+{
+  "enrollmentId": "uuid",
+  "contactId": "uuid",
+  "zoomJoinUrl": "string",
+  "scheduledSteps": [
+    { "type": "email", "scheduledAt": "ISO8601" },
+    { "type": "sms", "scheduledAt": "ISO8601" }
+  ],
+  "status": "enrolled"
+}
+```
+
+**Error Responses:**
+- `400` - Validation error (invalid email, missing required fields)
+- `409` - Already enrolled (returns existing enrollment)
+- `422` - Zoom enrollment failed (check event availability)
+- `500` - Internal server error
+- `503` - Service unavailable (Zoom API down)
+
+**Rate Limiting:**
+- 60 requests per minute per IP
+- 429 response with `Retry-After` header
+
+**Authentication:**
+- Public endpoint (no auth for MVP)
+- Admin endpoints require `Authorization: Bearer <JWT>` header
 
 ### Technology Stack
 
@@ -341,6 +410,149 @@
 - Supabase Logs (database queries)
 - Sentry (error tracking - future)
 
+### Content API Integration
+
+**Contract:**
+- **Endpoint**: `POST https://content-api.ceremonia.com/generate` (to be confirmed)
+- **Authentication**: API key in `X-API-Key` header
+- **Timeout**: 5 seconds
+- **Retry**: 2 attempts with 1s backoff
+
+**Request Format:**
+```json
+{
+  "templateType": "welcome_email" | "reminder_24h" | "reminder_1h" | "post_attended" | "post_noshow",
+  "channel": "email" | "sms",
+  "context": {
+    "firstName": "string",
+    "lastName": "string",
+    "eventTitle": "string",
+    "eventDate": "ISO8601",
+    "joinUrl": "string"
+  }
+}
+```
+
+**Response Format:**
+```json
+{
+  "subject": "string (email only)",
+  "htmlBody": "string (email only)",
+  "textBody": "string",
+  "personalizationTokens": ["{{firstName}}", "{{joinUrl}}"]
+}
+```
+
+**Fallback Strategy:**
+- If Content API unavailable or returns 5xx: use static templates from `/templates/fallback/`
+- Cache successful responses for 1 hour (reduce API calls)
+- Log all fallback uses for monitoring
+
+**Personalization Token Syntax:**
+- Format: `{{variableName}}`
+- Supported tokens: `{{firstName}}`, `{{lastName}}`, `{{eventTitle}}`, `{{eventDate}}`, `{{joinUrl}}`
+- Rendering: Server-side replacement before sending
+
+### Error Handling & Partial Failures
+
+**Scenario 1: Zoom Enrollment Succeeds, Email Fails**
+- Mark enrollment as `enrolled` (success)
+- Retry email send via Inngest (4 attempts: immediate, 1m, 5m, 30m)
+- If all retries fail: move to DLQ, alert admin
+- User still has Zoom access (partial success acceptable)
+
+**Scenario 2: Zoom Enrollment Fails**
+- Return 422 error to client
+- Do NOT create enrollment record
+- Do NOT trigger email/SMS jobs
+- Log failure with Zoom API error details
+
+**Scenario 3: Database Write Fails After Zoom Success**
+- Compensating transaction: attempt to delete Zoom registrant
+- If compensation fails: log to manual review queue
+- Return 500 error to client
+
+**Scenario 4: Event Cancelled or Rescheduled**
+- Admin endpoint: `DELETE /api/admin/events/:id/cancel`
+- Cancel all pending Inngest jobs for this event
+- Send cancellation email to all registrants (immediate)
+- Update `events.status` to `cancelled`
+
+**Retry Policy (All Jobs):**
+- Attempt 1: Immediate
+- Attempt 2: +1 minute
+- Attempt 3: +5 minutes
+- Attempt 4: +30 minutes
+- After 4 failures: move to DLQ, create alert
+
+**Idempotency:**
+- All Inngest jobs use `eventId + contactId + stepType` as idempotency key
+- Duplicate webhook deliveries: check `message_sends.external_id` before processing
+- Duplicate form submissions: upsert based on `email + eventId` unique constraint
+
+### Timezone & Scheduling Details
+
+**Timezone Detection:**
+1. Use `timezone` field from enrollment form (IANA format, e.g., "America/New_York")
+2. If not provided: default to "America/Denver" (US/Mountain)
+3. Validate timezone using `moment-timezone` library
+
+**Time Storage:**
+- All timestamps stored in UTC in database
+- `events.scheduled_at` stored as `TIMESTAMPTZ`
+- Convert to user's timezone only for display/scheduling
+
+**DST Handling:**
+- Use `moment-timezone` for DST-aware calculations
+- T-24h calculation: `event.scheduled_at.minus(24, 'hours')` in user's timezone
+- Test edge cases: DST spring forward, fall back
+
+**SMS Quiet Hours:**
+- Definition: 9am-9pm in **user's local timezone**
+- If scheduled send falls outside window: delay to next 9am
+- Holiday detection: not implemented in MVP (future enhancement)
+
+**Phone Number Validation:**
+- Format: E.164 (e.g., "+14155552671")
+- Validation library: `libphonenumber-js`
+- Reject invalid formats with 400 error
+- Normalize before storage: remove spaces, dashes, parentheses
+
+**Calendar .ics Format:**
+- Timezone: Use event's timezone (from `events.timezone` field)
+- Format: RFC 5545 compliant
+- Library: `ics` npm package
+- Include: DTSTART, DTEND, SUMMARY, DESCRIPTION, LOCATION (Zoom URL)
+
+### Monitoring & Operations
+
+**Key Metrics Dashboard:**
+- **API Latency**: P50, P95, P99 response times (target: <5s P95)
+- **Error Rate**: 5xx errors per hour (target: <1%)
+- **Job Completion**: % jobs completed successfully (target: 99%+)
+- **Email Deliverability**: % delivered, bounced, spam complaints
+- **SMS Deliverability**: % delivered, failed
+- **Cost Tracking**: Daily spend by service
+
+**Alerting Thresholds:**
+- P95 latency >10 seconds: Slack alert
+- Error rate >5% over 5 minutes: Email alert (solo dev)
+- Job failure rate >10%: Immediate alert
+- Daily cost >$5: Email notification
+- Zoom API rate limit hit: Immediate alert
+
+**Tools:**
+- Inngest Dashboard: Job health, retry rates, DLQ size
+- Vercel Analytics: API latency, error rates, bandwidth
+- Supabase Logs: Slow queries, connection pool usage
+- Custom Dashboard: Aggregate metrics from all sources (future)
+
+**Incident Response (Solo Developer):**
+- **Severity 1** (API down): Drop everything, investigate immediately
+- **Severity 2** (degraded performance): Investigate within 2 hours
+- **Severity 3** (failed jobs): Review DLQ daily, manual retry if needed
+- **Backup contact**: [TBD - define escalation path]
+
 ### Data Flow: Enrollment to Completion
 
 ```
@@ -350,24 +562,24 @@
    - Validate input (Zod schema)
    - Create/update contact in Supabase
    - Call Zoom API to register
-   - Store enrollment with Zoom IDs
+   - Store registration with Zoom IDs
    ↓
-3. Trigger Inngest event: 'webinar.enrolled'
-   - Event payload: { contactId, webinarId, enrollmentId }
+3. Trigger Inngest event: 'event.enrolled'
+   - Event payload: { contactId, eventId, registrationId }
    ↓
-4. Inngest function: webinar-funnel
+4. Inngest function: event-funnel
    - Step 1: Send welcome email (immediate)
    - Step 2: sleepUntil(T-24h), send reminder email + SMS
    - Step 3: sleepUntil(T-1h), send final reminder email + SMS
    ↓
-5. Webinar happens (external, on Zoom)
+5. Event happens (external, on Zoom)
    ↓
 6. Zoom webhook: POST /api/webhooks/zoom
    - Parse participant list
-   - Update enrollment.attended = true/false
-   - Trigger Inngest event: 'webinar.completed'
+   - Update registration.attended = true/false
+   - Trigger Inngest event: 'event.completed'
    ↓
-7. Inngest function: post-webinar-funnel
+7. Inngest function: post-event-funnel
    - Branch based on attended flag:
      - IF attended: thank you → resources → offer sequence
      - IF no-show: missed you → re-engagement → final sequence
@@ -375,12 +587,12 @@
 8. Each send triggers provider API call
    - Email: Resend API
    - SMS: Twilio API
-   - Record in sent_messages table
+   - Record in message_sends table
    ↓
 9. Provider webhooks update status
    - Resend: delivered, opened, clicked, bounced
    - Twilio: delivered, failed
-   - Update sent_messages.status, timestamps
+   - Update message_sends.status, timestamps
 ```
 
 ---
@@ -396,31 +608,31 @@
 - **Deliverable**: Form submission creates contact, enrolls in Zoom
 
 **Week 2: Job Queue & Content Integration**
-- Day 8-9: Inngest setup, first function (webinar.enrolled handler)
+- Day 8-9: Inngest setup, first function (event.enrolled handler)
 - Day 10-11: Content API integration (fetch HTML, personalization)
 - Day 12-14: Email sending (Resend integration, welcome email working)
 - **Deliverable**: Immediate welcome email sent on enrollment
 
 ### Phase 2: Drip Campaigns (Week 3-4)
 
-**Week 3: Pre-Webinar Sequence**
+**Week 3: Pre-Event Sequence**
 - Day 15-16: Implement T-24h reminder (email + SMS)
 - Day 17-18: Implement T-1h reminder (email + SMS)
 - Day 19-21: Twilio SMS integration, test end-to-end
-- **Deliverable**: Complete pre-webinar drip working
+- **Deliverable**: Complete pre-event drip working
 
-**Week 4: Post-Webinar Sequence**
+**Week 4: Post-Event Sequence**
 - Day 22-23: Zoom webhook handler (attendance tracking)
-- Day 24-25: Post-webinar branching logic (attended vs. no-show)
-- Day 26-28: Implement both sequences, test with real webinar
-- **Deliverable**: End-to-end funnel working for 1 webinar
+- Day 24-25: Post-event branching logic (attended vs. no-show)
+- Day 26-28: Implement both sequences, test with real event
+- **Deliverable**: End-to-end funnel working for 1 event
 
 ### Phase 3: Admin UI & Polish (Week 5-6)
 
 **Week 5: Dashboard & Webhooks**
 - Day 29-30: Resend webhook handler (email engagement)
 - Day 31-32: Twilio webhook handler (SMS delivery)
-- Day 33-35: Admin dashboard (webinar list, enrollment stats)
+- Day 33-35: Admin dashboard (event list, enrollment stats)
 - **Deliverable**: Can track funnel performance
 
 **Week 6: Testing & Launch**
@@ -432,9 +644,9 @@
 ### Post-MVP Roadmap (Month 2-3)
 
 **Month 2:**
-- Behavioral triggers (email opened → SMS escalation)
 - A/B testing framework
 - Enhanced analytics (funnel visualization)
+- Behavioral triggers (email opened → SMS escalation)
 
 **Month 3:**
 - WhatsApp integration
@@ -449,7 +661,7 @@
 
 **Enrollment Success:**
 - **Target**: 99%+ successful Zoom enrollments (excluding invalid input)
-- **Measure**: `COUNT(enrollments WHERE zoom_registrant_id IS NOT NULL) / COUNT(enrollments)`
+- **Measure**: `COUNT(registrations WHERE zoom_registrant_id IS NOT NULL) / COUNT(registrations)`
 
 **Job Completion Rate:**
 - **Target**: 99%+ jobs complete successfully
@@ -467,9 +679,9 @@
 
 ### Business Metrics
 
-**Webinar Attendance:**
+**Event Attendance:**
 - **Target**: 30%+ attendance rate (industry avg: 20-40%)
-- **Measure**: `COUNT(enrollments WHERE attended = true) / COUNT(enrollments)`
+- **Measure**: `COUNT(registrations WHERE attended = true) / COUNT(registrations)`
 
 **Email Engagement:**
 - **Open Rate**: 40%+ (industry avg: 20-30%)
@@ -479,9 +691,9 @@
 - **Open Rate**: 70%+ (SMS typically higher)
 - **Reply Rate**: 1-3%
 
-**Conversion (Post-Webinar):**
+**Conversion (Post-Event):**
 - **Target**: 10%+ take desired action (book call, purchase, etc.)
-- **Measure**: Track clicks on CTA links in post-webinar emails
+- **Measure**: Track clicks on CTA links in post-event emails
 
 ### Operational Metrics
 
@@ -503,7 +715,7 @@
 
 | Risk | Probability | Impact | Mitigation |
 |------|-------------|--------|------------|
-| **Zoom API rate limits** | Medium | High | Cache webinar data, batch requests, implement backoff |
+| **Zoom API rate limits** | Medium | High | Cache event data, batch requests, implement backoff |
 | **Email deliverability issues** | Medium | High | Use Resend/SendGrid, warm up domain, SPF/DKIM setup |
 | **Job queue failures** | Low | Critical | Inngest has built-in retries + DLQ, monitor dashboard |
 | **Content API downtime** | Medium | Medium | Cache templates locally, fallback to static content |
@@ -514,7 +726,7 @@
 
 | Risk | Probability | Impact | Mitigation |
 |------|-------------|--------|------------|
-| **Low webinar attendance** | Medium | Medium | Focus on reminder timing, test different cadences |
+| **Low event attendance** | Medium | Medium | Focus on reminder timing, test different cadences |
 | **Email marked as spam** | Medium | High | Use reputable provider, avoid spammy content, unsubscribe links |
 | **SMS opt-out rate** | Low | Low | Only send high-value SMS (reminders), respect STOP |
 | **Cost overruns** | Low | Medium | Monitor usage weekly, set spend limits on providers |
@@ -546,21 +758,29 @@
 
 ### Year 1 Costs (Projected)
 
-| Service | Usage | Cost |
-|---------|-------|------|
-| Inngest | 200K jobs/month | $75/month |
-| Resend/SendGrid | 500K emails/month | $200/month |
-| Twilio SMS | 50K SMS/month | $400/month |
-| Supabase | Pro plan (>8GB) | $25/month |
-| Vercel | Pro plan | $20/month |
-| **Total Year 1** | | **$720/month** |
+| Service | Usage | Cost | Alert Threshold |
+|---------|-------|------|-----------------|
+| Inngest | 200K jobs/month | $75/month | >$100/month |
+| Resend/SendGrid | 500K emails/month | $200/month | >$250/month |
+| Twilio SMS | 50K SMS/month | $400/month | >$450/month |
+| Supabase | Pro plan (>8GB) | $25/month | >$30/month |
+| Vercel | Pro plan | $20/month | >$25/month |
+| **Total Year 1** | | **$720/month** | **>$800/month** |
 
-**Budget Ceiling**: $500/month (need to optimize or reduce SMS volume)
+**Budget Gap**: $720/month projected vs $500/month ceiling = **$220/month over budget**
 
-**Optimization Strategies:**
-- Negotiate Twilio volume discount (25%+ savings at 100K+ SMS/month)
-- Use email for lower-urgency reminders (reduce SMS volume)
-- Self-host BullMQ if Inngest costs exceed $100/month
+**Required Optimizations (before Year 1):**
+1. **Reduce SMS volume by 40%**: Use email for T-24h reminder, SMS only for T-1h (saves ~$160/month)
+2. **Negotiate Twilio discount**: Target 25% savings at 100K+ volume (saves ~$100/month)
+3. **Alternative**: Switch to cheaper SMS provider (e.g., Bandwidth.com at $0.004/SMS)
+4. **Email optimization**: Stay on Resend free tier longer (3K → 10K with careful batching)
+
+**Revised Budget Target**: $500-550/month achievable with optimizations
+
+**Cost Monitoring:**
+- Weekly review of service spend
+- Automated alerts at threshold breaches
+- Monthly optimization review
 
 ---
 
@@ -568,45 +788,56 @@
 
 ### Technical Decisions
 
-1. **Timezone Handling**: Use user's browser timezone (from form) or IP-based detection?
-   - **Recommendation**: Ask in form, default to US/Pacific if not provided
+1. **~~Timezone Handling~~**: ✅ DECIDED - Use timezone from form, default to America/Denver (US/Mountain)
 
-2. **Idempotency Strategy**: How to handle duplicate form submissions?
-   - **Recommendation**: Use email+webinarId as unique key, update if exists
+2. **~~Idempotency Strategy~~**: ✅ DECIDED - Use email+eventId unique constraint, upsert if exists
 
-3. **Content Caching**: Cache generated content locally or always fetch fresh?
-   - **Recommendation**: Fetch fresh for first send, cache for retries
+3. **~~Content Caching~~**: ✅ DECIDED - Cache successful responses for 1 hour, fetch fresh for first send
 
-4. **Retry Policy**: How many retries for failed sends? How long between retries?
-   - **Recommendation**: 3 retries with exponential backoff (1min, 5min, 30min)
+4. **~~Retry Policy~~**: ✅ DECIDED - 4 attempts (immediate, 1m, 5m, 30m) then DLQ
 
-5. **Calendar Format**: Just .ics attachment or also "Add to Calendar" links?
-   - **Recommendation**: Both (maximizes compatibility)
+5. **~~Calendar Format~~**: ✅ DECIDED - Both .ics attachment AND "Add to Calendar" links
+
+6. **Authentication Strategy**: When to implement auth for admin endpoints? Phase 1 or defer to post-MVP?
+   - **Impact**: Security vs. speed tradeoff
+   - **Recommendation**: Implement JWT auth in Phase 3 (Week 5)
+
+7. **Rate Limiting**: Implement in Phase 1 (60/min) or defer to post-MVP?
+   - **Impact**: API protection vs. development speed
+   - **Recommendation**: Implement in Phase 1 (simple middleware)
 
 ### Business Decisions
 
-1. **SMS Consent**: Explicit checkbox or implied by form submission?
-   - **Recommendation**: Explicit checkbox to comply with TCPA
+1. **~~SMS Consent~~**: ✅ DECIDED - Explicit checkbox required (TCPA compliance)
 
-2. **Unsubscribe Granularity**: Unsubscribe from all or per-webinar?
-   - **Recommendation**: All (simpler for MVP), per-channel later
+2. **~~Unsubscribe Granularity~~**: ✅ DECIDED - Unsubscribe from all for MVP, per-channel later
 
-3. **Data Retention**: How long to keep sent_messages data?
-   - **Recommendation**: 90 days for analytics, then archive
+3. **Data Retention**: Confirm 90 days is legally sufficient for GDPR/CCPA
+   - **Impact**: Legal compliance
+   - **Action Required**: Legal review before launch
 
-4. **Multi-Tenant**: Single-tenant (Ceremonía only) or multi-tenant from start?
-   - **Recommendation**: Single-tenant MVP, add tenancy in v2
+4. **~~Multi-Tenant~~**: ✅ DECIDED - Single-tenant MVP, add tenancy in v2
+
+5. **Budget Overrun**: Approve SMS reduction strategy to meet $500/month ceiling?
+   - **Impact**: $220/month savings needed
+   - **Action Required**: Approve T-24h email-only strategy
 
 ### Scope Clarifications
 
-1. **Behavioral Triggers**: Which specific behaviors trigger which actions?
-   - **Deferred to Post-MVP**: Start with time-based only
+1. **Content API**: Need endpoint specification, authentication details, SLA requirements
+   - **Status**: Blocked - waiting on content team
+   - **Action Required**: Schedule alignment meeting
 
-2. **A/B Testing**: How to define variants and declare winner?
-   - **Deferred to Post-MVP**: Manual testing first
+2. **Calendar Integration**: Confirm if required for MVP launch (Week 6) or can be deferred to post-MVP
+   - **Impact**: 2 days of development time
+   - **Recommendation**: Include in MVP (high user value)
 
-3. **CRM Sync**: Which CRMs? One-way or bidirectional?
-   - **Deferred to Post-MVP**: Focus on core funnel first
+3. **Backup Contact**: Who handles incidents if solo developer is unavailable?
+   - **Status**: TBD
+   - **Action Required**: Define escalation path before production
+
+4. **Staging Environment**: Set up separate staging or use production with feature flags?
+   - **Recommendation**: Feature flags for MVP, separate staging post-launch
 
 ---
 
@@ -673,6 +904,7 @@
 | Version | Date | Author | Changes |
 |---------|------|--------|---------|
 | 1.0.0 | 2025-09-30 | Austin Mao | Initial PRD creation |
+| 1.1.0 | 2025-09-30 | Austin Mao | Major update: Added API specs, Content API integration, Error handling, Timezone details, Monitoring section. Fixed database naming (events vs webinars). Clarified Zoom support status. Committed to Inngest. Added budget gap analysis. Updated Open Questions with decisions. Moved Behavioral Triggers to Future. Default timezone: US/Mountain. |
 
 ---
 

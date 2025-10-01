@@ -1,5 +1,5 @@
 # Product Requirements Document v1.0.0
-*Myxelium: Webinar Funnel Orchestration API*
+*Myxelium: Event Funnel Orchestration API*
 
 **Document Version:** 1.0.0
 **Last Updated:** 2025-09-30
@@ -10,9 +10,9 @@
 
 ## Executive Summary
 
-**Problem:** Ceremonía needs a backend system to automate webinar enrollment and nurture sequences. Currently, there's no way to automatically enroll users in Zoom webinars and trigger personalized, multi-channel drip campaigns based on user behavior.
+**Problem:** Ceremonía needs a backend system to automate event enrollment and nurture sequences. Currently, there's no way to automatically enroll users in Zoom events (meetings/webinars) and trigger personalized, multi-channel drip campaigns based on user behavior.
 
-**Solution:** Build Myxelium, a funnel orchestration API that accepts contact submissions, enrolls them in Zoom webinars, and executes sophisticated drip campaigns across email, SMS, and (future) WhatsApp based on time delays and behavioral triggers.
+**Solution:** Build Myxelium, a funnel orchestration API that accepts contact submissions, enrolls them in Zoom events (Meetings or Webinars), and executes sophisticated drip campaigns across email, SMS, and (future) WhatsApp based on time delays and behavioral triggers.
 
 **Key Constraint:** Content generation is handled by a separate API. Myxelium only orchestrates delivery using pre-generated HTML/text content.
 
@@ -21,25 +21,30 @@
 ## Goals & Objectives
 
 ### Primary Goals
-1. **Automate Webinar Enrollment**: User fills form → automatically enrolled in Zoom with unique join URL
-2. **Execute Pre-Webinar Drip Campaigns**: T-24h and T-1h reminders via email + SMS
-3. **Branch Post-Webinar Flows**: Different sequences for attendees vs. no-shows
+1. **Automate Event Enrollment**: User fills form → automatically enrolled in Zoom (Meeting or Webinar) with unique join URL
+2. **Execute Pre-Event Drip Campaigns**: T-24h and T-1h reminders via email + SMS
+3. **Branch Post-Event Flows**: Different sequences for attendees vs. no-shows
 4. **Track Engagement**: Monitor email opens, clicks, SMS delivery for behavioral triggers
 5. **Cost-Effective MVP**: Operate at <$50/month for 500 contacts, 5K emails, 500 SMS
 
+### Zoom Platform Support
+- **Current (MVP)**: Zoom Meetings (Zoom Pro plan)
+- **Future**: Zoom Webinars (when webinar add-on is activated)
+- **Abstraction**: Events table supports both via `platform` field (`zoom_meeting` or `zoom_webinar`)
+
 ### Success Criteria (MVP - 6 weeks)
-- ✅ Successfully enroll 50+ users in live webinar via form submission
-- ✅ Execute 3-step pre-webinar drip (welcome → T-24h → T-1h)
-- ✅ Execute 3-step post-webinar drip (attended vs. no-show paths)
+- ✅ Successfully enroll 50+ users in live events via form submission
+- ✅ Execute 3-step pre-event drip (welcome → T-24h → T-1h)
+- ✅ Execute 3-step post-event drip (attended vs. no-show paths)
 - ✅ 99%+ job completion rate (excluding provider failures)
 - ✅ <5 second latency from form submit to Zoom enrollment
 - ✅ Total infrastructure cost <$50/month
 
 ### Success Criteria (Year 1)
-- 50K contacts enrolled across 100+ webinars
+- 50K contacts enrolled across 100+ events (meetings + webinars)
 - 500K emails/month, 50K SMS/month delivered
 - 40%+ email open rate, 70%+ SMS open rate
-- 30%+ webinar attendance rate
+- 30%+ event attendance rate
 - Total infrastructure cost <$500/month
 
 ---
@@ -84,22 +89,32 @@
 - **Database**: Store contacts with consent flags, timezone, custom attributes
 - **Deduplication**: Handle re-submissions (update vs. create)
 
-#### 2. Zoom Webinar Integration
-- **Registration API**: Call Zoom API to register user programmatically
-- **Webhook Handling**: Receive `webinar.ended` event with participant list
-- **Attendance Tracking**: Update enrollment.attended flag
+#### 2. Zoom Event Integration (Meetings + Webinars)
+- **Platform Detection**: Automatically detect event type (`zoom_meeting` or `zoom_webinar`)
+- **Meetings API (Current - Zoom Pro)**:
+  - Create scheduled meetings programmatically
+  - Add registrants to meetings
+  - Get unique join URLs for each participant
+  - Track attendance via `meeting.participant_joined` webhook
+- **Webinars API (Future - when add-on enabled)**:
+  - Create webinars programmatically
+  - Register participants via Webinar API
+  - Track attendance via `webinar.participant_joined` webhook
+- **Webhook Handling**: Receive participant events and attendance data
+- **Attendance Tracking**: Update `registrations.attended` flag
 - **Join URL Generation**: Return unique Zoom join URL immediately
+- **Abstraction**: Single codebase supports both, switched via `events.platform` field
 
-#### 3. Pre-Webinar Drip Campaign
+#### 3. Pre-Event Drip Campaign
 - **Step 1 (T+0h)**: Welcome email with join URL and calendar invite
-- **Step 2 (T-24h)**: Reminder email + SMS before webinar
+- **Step 2 (T-24h)**: Reminder email + SMS before event
 - **Step 3 (T-1h)**: Final reminder email + SMS
-- **Conditional Logic**: Only send if webinar hasn't happened yet (check status)
-- **Timing Calculation**: Relative to webinar.scheduledAt (not enrollment time)
+- **Conditional Logic**: Only send if event hasn't happened yet (check status)
+- **Timing Calculation**: Relative to `events.scheduled_at` (not enrollment time)
 
-#### 4. Post-Webinar Drip Campaign
+#### 4. Post-Event Drip Campaign
 **Path A - Attended:**
-- T+1h: Thank you email with replay link
+- T+1h: Thank you email with replay link (if available)
 - T+24h: Resources email (slides, materials)
 - T+3d: Nurture/offer email
 

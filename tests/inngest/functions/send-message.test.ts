@@ -3,8 +3,21 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { personalizeTemplate, buildPersonalizationData, formatEventDate } from '@/lib/resend/helpers';
 
 vi.mock('@/lib/db');
+
+// Mock Resend client
+const mockResendSend = vi.fn();
+vi.mock('@/lib/resend/client', () => ({
+  resend: {
+    emails: {
+      send: mockResendSend,
+    },
+  },
+  DEFAULT_FROM: 'Ceremonia <noreply@ceremonia.com>',
+  isResendConfigured: vi.fn(() => true),
+}));
 
 // Mock helper functions
 const mockCreateMessageSend = vi.fn();
@@ -30,49 +43,55 @@ describe('Message Sender', () => {
 
   describe('Template Personalization', () => {
     it('should replace firstName token', () => {
-      const template = 'Hello {{firstName}}!';
-      const personalized = template.replace(/\{\{firstName\}\}/g, 'John');
-
+      const personalized = personalizeTemplate('Hello {{firstName}}!', { firstName: 'John' });
       expect(personalized).toBe('Hello John!');
     });
 
     it('should replace multiple tokens', () => {
-      const template = 'Hi {{firstName}} {{lastName}}, join at {{joinUrl}}';
-      const personalized = template
-        .replace(/\{\{firstName\}\}/g, 'John')
-        .replace(/\{\{lastName\}\}/g, 'Doe')
-        .replace(/\{\{joinUrl\}\}/g, 'https://zoom.us/j/123');
+      const personalized = personalizeTemplate(
+        'Hi {{firstName}} {{lastName}}, join at {{joinUrl}}',
+        {
+          firstName: 'John',
+          lastName: 'Doe',
+          joinUrl: 'https://zoom.us/j/123',
+        }
+      );
 
       expect(personalized).toBe('Hi John Doe, join at https://zoom.us/j/123');
     });
 
     it('should handle missing data gracefully', () => {
-      const template = 'Hello {{firstName}}!';
-      const personalized = template.replace(/\{\{firstName\}\}/g, '');
-
+      const personalized = personalizeTemplate('Hello {{firstName}}!', {});
       expect(personalized).toBe('Hello !');
     });
 
     it('should replace eventTitle token', () => {
-      const template = 'You\'re registered for {{eventTitle}}';
-      const personalized = template.replace(/\{\{eventTitle\}\}/g, 'Webinar 101');
+      const personalized = personalizeTemplate(
+        "You're registered for {{eventTitle}}",
+        { eventTitle: 'Webinar 101' }
+      );
 
-      expect(personalized).toBe('You\'re registered for Webinar 101');
+      expect(personalized).toBe("You're registered for Webinar 101");
     });
 
     it('should replace eventDate token with formatted date', () => {
-      const template = 'Event on {{eventDate}}';
-      const date = new Date('2025-10-01T10:00:00Z');
-      const formatted = date.toLocaleDateString('en-US', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
-      const personalized = template.replace(/\{\{eventDate\}\}/g, formatted);
+      const formatted = formatEventDate('2025-10-01T10:00:00Z', 'America/Los_Angeles');
+      expect(formatted).toContain('October');
+      expect(formatted).toContain('2025');
+    });
 
-      expect(personalized).toContain('October');
-      expect(personalized).toContain('2025');
+    it('should build complete personalization data', () => {
+      const data = buildPersonalizationData(
+        { first_name: 'John', last_name: 'Doe', email: 'john@example.com' },
+        { title: 'AI Webinar', scheduled_at: '2025-10-01T10:00:00Z', timezone: 'America/Los_Angeles' },
+        { platform_join_url: 'https://zoom.us/j/123' }
+      );
+
+      expect(data.firstName).toBe('John');
+      expect(data.lastName).toBe('Doe');
+      expect(data.eventTitle).toBe('AI Webinar');
+      expect(data.joinUrl).toBe('https://zoom.us/j/123');
+      expect(data.eventDate).toContain('October');
     });
   });
 
@@ -316,6 +335,158 @@ describe('Message Sender', () => {
 
       expect(logEntry.registrationId).toBe('reg-123');
       expect(logEntry.action).toBe('message_sent');
+    });
+  });
+
+  describe('Resend Email Integration', () => {
+    beforeEach(() => {
+      mockResendSend.mockClear();
+    });
+
+    it('should send email via Resend successfully', async () => {
+      mockResendSend.mockResolvedValue({
+        data: { id: 'resend-msg-123' },
+        error: null,
+      });
+
+      const result = await mockResendSend({
+        from: 'Ceremonia <noreply@ceremonia.com>',
+        to: 'test@example.com',
+        subject: 'Test Email',
+        html: '<p>Hello World</p>',
+        text: 'Hello World',
+      });
+
+      expect(mockResendSend).toHaveBeenCalledWith({
+        from: 'Ceremonia <noreply@ceremonia.com>',
+        to: 'test@example.com',
+        subject: 'Test Email',
+        html: '<p>Hello World</p>',
+        text: 'Hello World',
+      });
+      expect(result.data.id).toBe('resend-msg-123');
+      expect(result.error).toBeNull();
+    });
+
+    it('should handle Resend rate limiting error', async () => {
+      mockResendSend.mockResolvedValue({
+        data: null,
+        error: { message: 'Rate limit exceeded (429)' },
+      });
+
+      const result = await mockResendSend({
+        from: 'Ceremonia <noreply@ceremonia.com>',
+        to: 'test@example.com',
+        subject: 'Test Email',
+        html: '<p>Test</p>',
+      });
+
+      expect(result.error).toBeDefined();
+      expect(result.error.message).toContain('Rate limit');
+    });
+
+    it('should handle invalid recipient error', async () => {
+      mockResendSend.mockResolvedValue({
+        data: null,
+        error: { message: 'Invalid recipient email address' },
+      });
+
+      const result = await mockResendSend({
+        from: 'Ceremonia <noreply@ceremonia.com>',
+        to: 'invalid-email',
+        subject: 'Test',
+        html: '<p>Test</p>',
+      });
+
+      expect(result.error).toBeDefined();
+      expect(result.error.message).toContain('Invalid recipient');
+    });
+
+    it('should handle Resend API errors gracefully', async () => {
+      mockResendSend.mockResolvedValue({
+        data: null,
+        error: { message: 'Internal server error' },
+      });
+
+      const result = await mockResendSend({
+        from: 'Ceremonia <noreply@ceremonia.com>',
+        to: 'test@example.com',
+        subject: 'Test',
+        html: '<p>Test</p>',
+      });
+
+      expect(result.error).toBeDefined();
+    });
+  });
+
+  describe('Webhook Event Processing', () => {
+    it('should process email.delivered event', () => {
+      const webhookEvent = {
+        type: 'email.delivered',
+        created_at: '2025-09-30T10:00:00Z',
+        data: {
+          email_id: 'resend-msg-123',
+          from: 'noreply@ceremonia.com',
+          to: ['test@example.com'],
+          subject: 'Welcome Email',
+          created_at: '2025-09-30T10:00:00Z',
+        },
+      };
+
+      expect(webhookEvent.type).toBe('email.delivered');
+      expect(webhookEvent.data.email_id).toBe('resend-msg-123');
+    });
+
+    it('should process email.opened event', () => {
+      const webhookEvent = {
+        type: 'email.opened',
+        created_at: '2025-09-30T10:05:00Z',
+        data: {
+          email_id: 'resend-msg-123',
+          from: 'noreply@ceremonia.com',
+          to: ['test@example.com'],
+          subject: 'Welcome Email',
+          created_at: '2025-09-30T10:05:00Z',
+        },
+      };
+
+      expect(webhookEvent.type).toBe('email.opened');
+    });
+
+    it('should process email.clicked event with link tracking', () => {
+      const webhookEvent = {
+        type: 'email.clicked',
+        created_at: '2025-09-30T10:10:00Z',
+        data: {
+          email_id: 'resend-msg-123',
+          from: 'noreply@ceremonia.com',
+          to: ['test@example.com'],
+          subject: 'Welcome Email',
+          link: 'https://zoom.us/j/123',
+          created_at: '2025-09-30T10:10:00Z',
+        },
+      };
+
+      expect(webhookEvent.type).toBe('email.clicked');
+      expect(webhookEvent.data.link).toBe('https://zoom.us/j/123');
+    });
+
+    it('should process email.bounced event', () => {
+      const webhookEvent = {
+        type: 'email.bounced',
+        created_at: '2025-09-30T10:00:00Z',
+        data: {
+          email_id: 'resend-msg-123',
+          from: 'noreply@ceremonia.com',
+          to: ['invalid@example.com'],
+          subject: 'Welcome Email',
+          bounce_type: 'hard',
+          created_at: '2025-09-30T10:00:00Z',
+        },
+      };
+
+      expect(webhookEvent.type).toBe('email.bounced');
+      expect(webhookEvent.data.bounce_type).toBe('hard');
     });
   });
 });

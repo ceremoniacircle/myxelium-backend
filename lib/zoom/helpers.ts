@@ -53,7 +53,7 @@ export function verifyZoomWebhookSignature(
       Buffer.from(calculatedSignature),
       Buffer.from(signature)
     );
-  } catch (error) {
+  } catch {
     // Buffer lengths don't match - invalid signature
     return false;
   }

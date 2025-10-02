@@ -30,6 +30,9 @@ describe('Admin Messages API', () => {
   let mockDb: any;
 
   beforeEach(async () => {
+    // Disable admin authentication for tests
+    process.env.ADMIN_AUTH_ENABLED = 'false';
+
     vi.clearAllMocks();
 
     const { db } = await import('@/lib/db');
@@ -44,6 +47,10 @@ describe('Admin Messages API', () => {
     mockDb.range = vi.fn(() => mockDb);
     mockDb.single = vi.fn(() => ({ data: null, error: null }));
     mockDb.maybeSingle = vi.fn(() => ({ data: null, error: null }));
+  });
+
+  afterEach(() => {
+    delete process.env.ADMIN_AUTH_ENABLED;
   });
 
   describe('GET /api/admin/messages', () => {

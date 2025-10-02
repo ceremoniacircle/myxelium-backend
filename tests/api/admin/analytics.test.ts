@@ -14,6 +14,9 @@ describe('Admin Analytics API', () => {
   let mockDb: any;
 
   beforeEach(async () => {
+    // Disable admin authentication for tests
+    process.env.ADMIN_AUTH_ENABLED = 'false';
+
     vi.clearAllMocks();
 
     const { db } = await import('@/lib/db');
@@ -27,6 +30,10 @@ describe('Admin Analytics API', () => {
     mockDb.lte = vi.fn(() => mockDb);
     mockDb.not = vi.fn(() => mockDb);
     mockDb.maybeSingle = vi.fn(() => ({ data: null, error: null }));
+  });
+
+  afterEach(() => {
+    delete process.env.ADMIN_AUTH_ENABLED;
   });
 
   describe('GET /api/admin/analytics/overview', () => {

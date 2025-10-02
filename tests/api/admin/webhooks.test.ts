@@ -13,6 +13,9 @@ describe('Admin Webhooks API', () => {
   let mockDb: any;
 
   beforeEach(async () => {
+    // Disable admin authentication for tests
+    process.env.ADMIN_AUTH_ENABLED = 'false';
+
     vi.clearAllMocks();
 
     const { db } = await import('@/lib/db');
@@ -23,6 +26,10 @@ describe('Admin Webhooks API', () => {
     mockDb.eq = vi.fn(() => mockDb);
     mockDb.order = vi.fn(() => mockDb);
     mockDb.range = vi.fn(() => mockDb);
+  });
+
+  afterEach(() => {
+    delete process.env.ADMIN_AUTH_ENABLED;
   });
 
   describe('GET /api/admin/webhooks', () => {

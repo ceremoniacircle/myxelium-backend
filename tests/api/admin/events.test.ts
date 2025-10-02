@@ -12,8 +12,25 @@ import { NextRequest } from 'next/server';
 vi.mock('@/lib/db');
 vi.mock('@/inngest/client');
 
+// Mock authentication
+vi.mock('@/lib/auth/admin-auth', () => ({
+  validateAdminToken: vi.fn(),
+  isAdminAuthEnabled: vi.fn(() => true),
+  AuthError: class AuthError extends Error {
+    constructor(
+      message: string,
+      public code: string,
+      public statusCode: number
+    ) {
+      super(message);
+      this.name = 'AuthError';
+    }
+  }
+}));
+
 describe('Admin Events API', () => {
   let mockDb: any;
+  let mockValidateAdminToken: any;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -35,6 +52,71 @@ describe('Admin Events API', () => {
     mockDb.range = vi.fn(() => mockDb);
     mockDb.single = vi.fn(() => ({ data: null, error: null }));
     mockDb.maybeSingle = vi.fn(() => ({ data: null, error: null }));
+
+    // Setup auth mock
+    const authModule = await import('@/lib/auth/admin-auth');
+    mockValidateAdminToken = authModule.validateAdminToken as any;
+
+    // Default to valid admin user
+    mockValidateAdminToken.mockResolvedValue({
+      id: 'admin-123',
+      email: 'admin@example.com',
+      role: 'admin'
+    });
+  });
+
+  describe('Authentication', () => {
+    it('should reject requests without authentication', async () => {
+      const { AuthError } = await import('@/lib/auth/admin-auth');
+      mockValidateAdminToken.mockRejectedValue(
+        new AuthError('Missing authentication token', 'MISSING_TOKEN', 401)
+      );
+
+      const request = new NextRequest('http://localhost/api/admin/events');
+      const response = await listEvents(request);
+      const json = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(json.error).toBe('Unauthorized');
+      expect(json.code).toBe('MISSING_TOKEN');
+    });
+
+    it('should reject requests with invalid token', async () => {
+      const { AuthError } = await import('@/lib/auth/admin-auth');
+      mockValidateAdminToken.mockRejectedValue(
+        new AuthError('Invalid or expired authentication token', 'INVALID_TOKEN', 401)
+      );
+
+      const request = new NextRequest('http://localhost/api/admin/events', {
+        headers: {
+          'Authorization': 'Bearer invalid-token'
+        }
+      });
+      const response = await listEvents(request);
+      const json = await response.json();
+
+      expect(response.status).toBe(401);
+      expect(json.error).toBe('Unauthorized');
+    });
+
+    it('should reject requests from non-admin users', async () => {
+      const { AuthError } = await import('@/lib/auth/admin-auth');
+      mockValidateAdminToken.mockRejectedValue(
+        new AuthError('Insufficient permissions. Admin role required.', 'INSUFFICIENT_PERMISSIONS', 403)
+      );
+
+      const request = new NextRequest('http://localhost/api/admin/events', {
+        headers: {
+          'Authorization': 'Bearer user-token'
+        }
+      });
+      const response = await listEvents(request);
+      const json = await response.json();
+
+      expect(response.status).toBe(403);
+      expect(json.error).toBe('Forbidden');
+      expect(json.code).toBe('INSUFFICIENT_PERMISSIONS');
+    });
   });
 
   describe('GET /api/admin/events', () => {

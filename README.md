@@ -481,18 +481,35 @@ Configure these in provider dashboards:
 
 ### Admin API
 
-Use admin endpoints to monitor system health:
+All admin endpoints require JWT authentication. First, set up an admin user and obtain a token:
 
+**Setup Admin User (one-time):**
 ```bash
+# In Supabase SQL Editor
+UPDATE auth.users
+SET raw_user_meta_data = raw_user_meta_data || '{"role": "admin"}'::jsonb
+WHERE email = 'admin@example.com';
+```
+
+**Use Admin Endpoints:**
+```bash
+# Get your JWT token from Supabase Auth
+TOKEN="your-jwt-token-here"
+
 # System overview
-curl https://yourdomain.com/api/admin/analytics/overview
+curl -H "Authorization: Bearer $TOKEN" \
+  https://yourdomain.com/api/admin/analytics/overview
 
 # Event performance
-curl https://yourdomain.com/api/admin/events?status=completed
+curl -H "Authorization: Bearer $TOKEN" \
+  https://yourdomain.com/api/admin/events?status=completed
 
 # Recent messages
-curl https://yourdomain.com/api/admin/messages?limit=10
+curl -H "Authorization: Bearer $TOKEN" \
+  https://yourdomain.com/api/admin/messages?limit=10
 ```
+
+**📄 Full Admin API Documentation:** [docs/api/ADMIN_API.md](./docs/api/ADMIN_API.md)
 
 ---
 
@@ -500,6 +517,8 @@ curl https://yourdomain.com/api/admin/messages?limit=10
 
 ### Current Implementation
 
+- ✅ **JWT authentication for admin endpoints** (Supabase Auth)
+- ✅ **Role-based access control** (admin role validation)
 - ✅ Input validation on all API endpoints
 - ✅ Webhook signature verification (Resend, Twilio, Zoom)
 - ✅ SQL injection protection via Supabase
@@ -507,14 +526,27 @@ curl https://yourdomain.com/api/admin/messages?limit=10
 - ✅ Environment variable protection
 - ✅ Error sanitization
 
+### Authentication Architecture
+
+**Admin API (Protected):**
+- All `/api/admin/*` endpoints require valid JWT token
+- Token must belong to user with `role: "admin"` in metadata
+- 401 Unauthorized for missing/invalid tokens
+- 403 Forbidden for non-admin users
+- Performance: <100ms JWT validation overhead
+
+**Public API (Open):**
+- `/api/enrollments` - Public enrollment endpoint
+- `/api/webhooks/*` - Signature-verified webhook handlers
+
 ### Future Enhancements
 
-- [ ] JWT authentication for admin endpoints
-- [ ] API key authentication for public endpoints
+- [ ] API key authentication for enrollment endpoint
 - [ ] Rate limiting (Redis)
-- [ ] Role-based access control
-- [ ] Audit logging
-- [ ] GDPR compliance tools
+- [ ] Multi-role support (admin, viewer, editor)
+- [ ] Audit logging for admin actions
+- [ ] IP allowlisting for admin endpoints
+- [ ] GDPR compliance tools (data export, deletion)
 
 ---
 

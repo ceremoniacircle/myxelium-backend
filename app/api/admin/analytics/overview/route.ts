@@ -7,9 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { AdminAnalyticsOverview, AdminErrorResponse } from '@/lib/types/admin';
-
-// TODO: Add authentication middleware
-// e.g., JWT token validation or API key
+import { requireAdmin } from '@/lib/middleware/require-admin';
 
 /**
  * GET /api/admin/analytics/overview
@@ -18,7 +16,7 @@ import { AdminAnalyticsOverview, AdminErrorResponse } from '@/lib/types/admin';
  * - start_date?: string (ISO 8601)
  * - end_date?: string (ISO 8601)
  */
-export async function GET(request: NextRequest) {
+export const GET = requireAdmin(async (request: NextRequest) => {
   try {
     const searchParams = request.nextUrl.searchParams;
 
@@ -176,6 +174,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(response);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     console.error('[admin/analytics/overview] Unexpected error:', error);
     return NextResponse.json<AdminErrorResponse>(
@@ -183,4 +182,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

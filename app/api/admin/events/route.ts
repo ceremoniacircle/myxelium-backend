@@ -7,9 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { AdminEventListItem, AdminListResponse, AdminErrorResponse } from '@/lib/types/admin';
-
-// TODO: Add authentication middleware
-// e.g., JWT token validation or API key
+import { requireAdmin } from '@/lib/middleware/require-admin';
 
 /**
  * GET /api/admin/events
@@ -21,7 +19,7 @@ import { AdminEventListItem, AdminListResponse, AdminErrorResponse } from '@/lib
  * - sort?: 'scheduled_at' | 'created_at' (default 'scheduled_at')
  * - order?: 'asc' | 'desc' (default 'desc')
  */
-export async function GET(request: NextRequest) {
+export const GET = requireAdmin(async (request: NextRequest) => {
   try {
     const searchParams = request.nextUrl.searchParams;
 
@@ -183,4 +181,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

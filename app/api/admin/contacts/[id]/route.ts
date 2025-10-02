@@ -7,17 +7,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { AdminContactDetails, AdminErrorResponse } from '@/lib/types/admin';
-
-// TODO: Add authentication middleware
-// e.g., JWT token validation or API key
+import { requireAdmin } from '@/lib/middleware/require-admin';
 
 /**
  * GET /api/admin/contacts/[id]
  */
-export async function GET(
+export const GET = requireAdmin(async (
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+  { params }: { params?: Promise<{ id: string }> }
+) => {
+  if (!params) {
+    return NextResponse.json<AdminErrorResponse>(
+      { error: 'Missing contact ID' },
+      { status: 400 }
+    );
+  }
   try {
     const { id } = await params;
 
@@ -176,4 +180,4 @@ export async function GET(
       { status: 500 }
     );
   }
-}
+});

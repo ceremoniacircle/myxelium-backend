@@ -7,9 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { AdminMessageListItem, AdminListResponse, AdminErrorResponse } from '@/lib/types/admin';
-
-// TODO: Add authentication middleware
-// e.g., JWT token validation or API key
+import { requireAdmin } from '@/lib/middleware/require-admin';
 
 /**
  * GET /api/admin/messages
@@ -22,7 +20,7 @@ import { AdminMessageListItem, AdminListResponse, AdminErrorResponse } from '@/l
  * - limit?: number (default 50, max 100)
  * - offset?: number
  */
-export async function GET(request: NextRequest) {
+export const GET = requireAdmin(async (request: NextRequest) => {
   try {
     const searchParams = request.nextUrl.searchParams;
 
@@ -208,4 +206,4 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

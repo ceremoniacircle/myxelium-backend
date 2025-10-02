@@ -8,9 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { inngest } from '@/inngest/client';
 import { AdminErrorResponse } from '@/lib/types/admin';
-
-// TODO: Add authentication middleware
-// e.g., JWT token validation or API key
+import { requireAdmin } from '@/lib/middleware/require-admin';
 
 interface CancelEventRequest {
   reason?: string;
@@ -26,10 +24,16 @@ interface CancelEventResponse {
 /**
  * POST /api/admin/events/[id]/cancel
  */
-export async function POST(
+export const POST = requireAdmin(async (
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+  { params }: { params?: Promise<{ id: string }> }
+) => {
+  if (!params) {
+    return NextResponse.json<AdminErrorResponse>(
+      { error: 'Missing event ID' },
+      { status: 400 }
+    );
+  }
   try {
     const { id } = await params;
     const body: CancelEventRequest = await request.json().catch(() => ({}));
@@ -127,4 +131,4 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+});

@@ -9,14 +9,12 @@ import { db } from '@/lib/db';
 import { resend, DEFAULT_FROM } from '@/lib/resend/client';
 import { twilioClient, TWILIO_PHONE_NUMBER } from '@/lib/twilio/client';
 import { AdminSendMessageRequest, AdminSendMessageResponse, AdminErrorResponse } from '@/lib/types/admin';
-
-// TODO: Add authentication middleware
-// e.g., JWT token validation or API key
+import { requireAdmin } from '@/lib/middleware/require-admin';
 
 /**
  * POST /api/admin/messages/send
  */
-export async function POST(request: NextRequest) {
+export const POST = requireAdmin(async (request: NextRequest) => {
   try {
     const body: AdminSendMessageRequest = await request.json();
 
@@ -186,4 +184,4 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

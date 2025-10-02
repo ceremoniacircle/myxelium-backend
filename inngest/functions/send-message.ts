@@ -26,6 +26,12 @@ import {
   isWithinQuietHours,
   getNextQuietHoursSendTime,
 } from '@/lib/twilio/helpers';
+import {
+  generateICSFromRegistration,
+  icsToBase64,
+  generateICSFilename,
+  generateCalendarLinksFromRegistration,
+} from '@/lib/calendar';
 import { NonRetriableError } from 'inngest';
 
 interface SendMessageInput {
@@ -181,7 +187,7 @@ export const sendMessage = inngest.createFunction(
               personalizationData
             );
             bodyText = personalizeTemplate(
-              `Hi {{firstName}},\n\nYou're all set for "{{eventTitle}}"!\n\nJoin URL: {{joinUrl}}\n\nSee you there!\n\nBest,\nThe Ceremonia Team`,
+              `Hi {{firstName}},\n\nYou're all set for "{{eventTitle}}"!\n\nEvent: {{eventDate}}\n\nJoin URL: {{joinUrl}}\n\nAdd this event to your calendar using the links in this email.\n\nSee you there!\n\nBest,\nThe Ceremonia Team`,
               personalizationData
             );
             bodyHtml = textToHtml(bodyText);
@@ -248,14 +254,107 @@ export const sendMessage = inngest.createFunction(
           console.log(`[send-message] Sending email to ${contact.email} via Resend`);
           console.log(`[send-message] Template: ${templateType}, Subject: ${subject}`);
 
+          // Generate calendar files and links for welcome emails
+          let calendarAttachment;
+          let calendarLinksHtml = '';
+
+          if (templateType === 'welcome-email' && eventData && registration) {
+            try {
+              // Generate ICS file
+              const icsContent = generateICSFromRegistration(
+                {
+                  id: eventData.id,
+                  title: eventData.title,
+                  description: eventData.description,
+                  scheduled_at: eventData.scheduled_at,
+                  timezone: eventData.timezone,
+                  duration_minutes: eventData.duration_minutes,
+                  join_url: eventData.join_url,
+                },
+                {
+                  id: registration.id,
+                  platform_join_url: registration.platform_join_url,
+                },
+                {
+                  first_name: contact.first_name,
+                  last_name: contact.last_name,
+                  email: contact.email,
+                }
+              );
+
+              // Convert to base64 for attachment
+              const icsBase64 = icsToBase64(icsContent);
+              const icsFilename = generateICSFilename(eventData.title);
+
+              calendarAttachment = {
+                filename: icsFilename,
+                content: icsBase64,
+              };
+
+              // Generate add-to-calendar links
+              const calendarLinks = generateCalendarLinksFromRegistration(
+                {
+                  id: eventData.id,
+                  title: eventData.title,
+                  description: eventData.description,
+                  scheduled_at: eventData.scheduled_at,
+                  timezone: eventData.timezone,
+                  duration_minutes: eventData.duration_minutes,
+                  join_url: eventData.join_url,
+                },
+                {
+                  id: registration.id,
+                  platform_join_url: registration.platform_join_url,
+                },
+                {
+                  first_name: contact.first_name,
+                  last_name: contact.last_name,
+                  email: contact.email,
+                },
+                icsContent
+              );
+
+              // Build calendar links HTML section
+              calendarLinksHtml = `
+                <div style="margin: 20px 0; padding: 15px; background-color: #f5f5f5; border-radius: 5px;">
+                  <p style="font-weight: bold; margin-bottom: 10px;">Add to Calendar:</p>
+                  <p style="margin: 5px 0;">
+                    <a href="${calendarLinks.google}" style="color: #1a73e8; text-decoration: none;">Google Calendar</a> |
+                    <a href="${calendarLinks.outlook}" style="color: #1a73e8; text-decoration: none;">Outlook</a> |
+                    <a href="${calendarLinks.apple}" style="color: #1a73e8; text-decoration: none;" download="${icsFilename}">Apple Calendar</a> |
+                    <a href="${calendarLinks.yahoo}" style="color: #1a73e8; text-decoration: none;">Yahoo Calendar</a>
+                  </p>
+                </div>
+              `;
+
+              // Add calendar links to HTML body
+              bodyHtml = bodyHtml.replace(
+                '</p>',
+                `</p>${calendarLinksHtml}`
+              );
+
+              console.log(`[send-message] Generated calendar file: ${icsFilename}`);
+            } catch (calendarError) {
+              // Log calendar generation error but don't fail the email
+              console.error('[send-message] Error generating calendar file:', calendarError);
+            }
+          }
+
           // Send email via Resend
-          const { data, error } = await resend.emails.send({
+          const emailData: any = {
             from: DEFAULT_FROM,
             to: contact.email,
             subject,
             html: bodyHtml,
             text: bodyText,
-          });
+          };
+
+          // Add calendar attachment if available
+          if (calendarAttachment) {
+            emailData.attachments = [calendarAttachment];
+          }
+
+          const { data, error } = await resend.emails.send(emailData);
 
           if (error) {
             // Handle Resend-specific errors

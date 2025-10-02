@@ -16,6 +16,16 @@ import {
 } from '@/lib/inngest/helpers';
 import { resend, DEFAULT_FROM, isResendConfigured } from '@/lib/resend/client';
 import { personalizeTemplate, buildPersonalizationData, textToHtml } from '@/lib/resend/helpers';
+import { twilioClient, TWILIO_PHONE_NUMBER, isTwilioConfigured } from '@/lib/twilio/client';
+import {
+  validatePhoneNumber,
+  normalizePhoneNumber,
+  personalizeSMSTemplate,
+  buildSMSPersonalizationData,
+  truncateSMS,
+  isWithinQuietHours,
+  getNextQuietHoursSendTime,
+} from '@/lib/twilio/helpers';
 import { NonRetriableError } from 'inngest';
 
 interface SendMessageInput {
@@ -288,25 +298,138 @@ export const sendMessage = inngest.createFunction(
           throw error;
         }
       } else if (channel === 'sms') {
-        // === SMS SENDING (PLACEHOLDER - TODO: Integrate Twilio) ===
-        console.log('\n=== SMS SEND (PLACEHOLDER) ===');
-        console.log(`Message ID: ${messageId}`);
-        console.log(`Template: ${templateType}`);
-        console.log(`Contact: ${contact.first_name} ${contact.last_name}`);
-        console.log(`Phone: ${contact.phone}`);
+        // === SMS SENDING VIA TWILIO ===
 
-        if (eventData) {
-          console.log(`Event: ${eventData.title}`);
+        // Check if Twilio is configured
+        if (!isTwilioConfigured()) {
+          const error = 'Twilio not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_PHONE_NUMBER environment variables.';
+          console.error(`[send-message] ${error}`);
+          throw new NonRetriableError(error);
         }
 
-        console.log('=================================\n');
+        // Validate recipient phone number
+        if (!contact.phone) {
+          const error = 'Contact has no phone number';
+          console.error(`[send-message] ${error} - Contact ID: ${contactId}`);
+          throw new NonRetriableError(error);
+        }
 
-        // Simulate successful send
-        return {
-          success: true,
-          providerMessageId: `twilio-placeholder-${Date.now()}`,
-          provider: 'twilio',
-        };
+        // Validate and normalize phone number
+        const normalizedPhone = normalizePhoneNumber(contact.phone);
+        if (!validatePhoneNumber(normalizedPhone)) {
+          const error = `Invalid phone number format: ${contact.phone}`;
+          console.error(`[send-message] ${error}`);
+          throw new NonRetriableError(error);
+        }
+
+        // Check quiet hours (9am-9pm local time)
+        const timezone = eventData?.timezone || 'America/Los_Angeles';
+        const now = new Date();
+
+        if (!isWithinQuietHours(timezone, now)) {
+          const nextSendTime = getNextQuietHoursSendTime(timezone, now);
+          const delayMs = nextSendTime.getTime() - now.getTime();
+
+          console.log(
+            `[send-message] Outside quiet hours. Delaying SMS until ${nextSendTime.toISOString()} (${delayMs}ms)`
+          );
+
+          // Schedule send for next quiet hours window
+          // For now, we'll throw an error to retry later
+          // TODO: Use Inngest's step.sleep() or step.waitForEvent() for better scheduling
+          throw new Error(`Outside quiet hours. Retry after ${nextSendTime.toISOString()}`);
+        }
+
+        // Build personalization data
+        const personalizationData = buildSMSPersonalizationData(contact, eventData, registration);
+
+        // Build SMS message based on template
+        let smsBody: string;
+
+        switch (templateType) {
+          case 'reminder-24h-sms':
+            smsBody = personalizeSMSTemplate(
+              'Hi {{firstName}}! Reminder: "{{eventTitle}}" tomorrow at {{eventDate}}. Join: {{joinUrl}}',
+              personalizationData
+            );
+            break;
+
+          case 'reminder-1h-sms':
+            smsBody = personalizeSMSTemplate(
+              '"{{eventTitle}}" starts in 1 hour! Join now: {{joinUrl}}',
+              personalizationData
+            );
+            break;
+
+          case 'welcome-sms':
+            smsBody = personalizeSMSTemplate(
+              'Hi {{firstName}}! You\'re registered for "{{eventTitle}}". Join link: {{joinUrl}}',
+              personalizationData
+            );
+            break;
+
+          case 'thank-you-sms':
+            smsBody = personalizeSMSTemplate(
+              'Thanks for joining "{{eventTitle}}", {{firstName}}! Hope you enjoyed it.',
+              personalizationData
+            );
+            break;
+
+          default:
+            smsBody = personalizeSMSTemplate(
+              'Message from Ceremonia',
+              personalizationData
+            );
+        }
+
+        // Truncate if too long (keep under 160 chars for single segment)
+        smsBody = truncateSMS(smsBody, 160);
+
+        try {
+          console.log(`[send-message] Sending SMS to ${normalizedPhone} via Twilio`);
+          console.log(`[send-message] Template: ${templateType}, Body: ${smsBody}`);
+
+          // Send SMS via Twilio
+          const message = await twilioClient.messages.create({
+            body: smsBody,
+            from: TWILIO_PHONE_NUMBER,
+            to: normalizedPhone,
+            // Enable status callbacks
+            statusCallback: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://yourdomain.com'}/api/webhooks/twilio`,
+          });
+
+          console.log(`[send-message] SMS sent successfully - Twilio SID: ${message.sid}`);
+
+          return {
+            success: true,
+            providerMessageId: message.sid,
+            provider: 'twilio',
+          };
+        } catch (error: any) {
+          console.error('[send-message] Twilio API error:', error);
+
+          // Check for invalid phone number (non-retriable)
+          if (
+            error.code === 21211 || // Invalid 'To' phone number
+            error.code === 21614 || // 'To' number not verified (trial account)
+            error.code === 21408    // Permission to send to this number is blocked
+          ) {
+            throw new NonRetriableError(`Invalid recipient: ${error.message}`);
+          }
+
+          // Check for rate limiting (retriable)
+          if (error.code === 20429 || error.message?.includes('rate limit')) {
+            throw new Error(`Rate limit exceeded: ${error.message}`);
+          }
+
+          // Check for insufficient balance (non-retriable)
+          if (error.code === 21606) {
+            throw new NonRetriableError(`Insufficient account balance: ${error.message}`);
+          }
+
+          // Other errors - retriable
+          throw new Error(`Twilio error: ${error.message}`);
+        }
       } else {
         // Unsupported channel
         throw new NonRetriableError(`Unsupported channel: ${channel}`);

@@ -1,0 +1,291 @@
+{
+  "meta": {
+    "document_version": "1.0.0",
+    "created_at": "2025-10-01",
+    "project": "Myxelium Backend",
+    "organization": "Ceremonia",
+    "author": "Vision & Architecture Synthesizer",
+    "audience": ["CEO", "CTO", "VP Product", "Head of Engineering", "Ceremonia Team"]
+  },
+  "summary": "Myxelium transforms webinar funnel management from manual, time-consuming HubSpot workflows to intelligent, context-aware automation. For Ceremonia's 9-person team running wellness webinars, it delivers variable-timing campaigns (7-day → 2-day auto-compression), attendance-based branching (attended vs. no-show paths), and multi-channel orchestration (email + SMS + calendar) via Next.js 15 + Inngest + Supabase. Current state: 428 tests passing, 96.3% coverage, pre/post-event funnels operational. Next 90 days: Add adaptive campaign timing, poll-driven personalization, and production hardening for Q1 2026 launch.",
+  "vision": {
+    "problem": [
+      "Manual funnel setup in HubSpot takes days; no system handles variable timing when users register 2 days before webinar but 7-day campaign is configured—emails send AFTER event ends, wasting engagement",
+      "Post-event follow-ups ignore attendance data; attendees and no-shows receive identical sequences, missing conversion opportunities from differentiated messaging (replay video for no-shows, resources for attendees)",
+      "Webinar poll responses never trigger personalized follow-ups; no connection between in-event engagement (\"yes\" to offer poll) and post-event sequences, leaving qualified leads uncontacted"
+    ],
+    "users_jtbd": [
+      "Primary: Ceremonia Marketing Team (9 people) - Job: Launch wellness webinar funnels in hours (not days) with intelligent timing that adapts to registration date, achieving >10% registration→purchase conversion vs. industry 2-5%",
+      "Secondary: Ceremonia Operations Team - Job: Monitor funnel health (email delivery, SMS status, attendance tracking) via admin dashboard, identifying and fixing delivery failures before they impact conversion"
+    ],
+    "product_thesis": "For wellness marketers who launch webinar funnels with tight deadlines and variable registration timing, Myxelium is an event orchestration backend that delivers intelligent, multi-channel campaigns via Inngest job queue and Supabase CRM, by automatically compressing timelines, branching on attendance, and integrating webinar interactions—unlike HubSpot which requires manual workflow configuration and lacks event-aware timing.",
+    "before_after": {
+      "before": "Marketing team spends 2 days configuring HubSpot workflows for a webinar. User registers 2 days before event; receives 7-day email sequence that continues 5 days AFTER webinar ends. Attendee and no-show both receive identical \"thank you\" email with no differentiation. No follow-up on poll responses from webinar. Conversion: 3.2%.",
+      "after": [
+        "Funnel setup time: 2 days (manual HubSpot) → 4 hours (API + admin dashboard)",
+        "Campaign timing accuracy: 40% emails sent post-event → 100% sent pre-event via adaptive compression (7-day → 2-day when registration is 48h before)",
+        "Conversion rate: 3.2% baseline → 8.5% target (attended path: resources + nurture; no-show path: replay + re-engagement)"
+      ]
+    },
+    "scope": {
+      "now": [
+        "✅ Event enrollment API with Zoom integration (Meetings + Webinars)",
+        "✅ Pre-event drip: Welcome (T+0h) → 24h reminder (email+SMS) → 1h reminder (email+SMS)",
+        "✅ Post-event branching: Attended path (thank you, resources, nurture) vs. No-show path (sorry, re-engagement, final)",
+        "✅ Multi-channel messaging: Resend (email), Twilio (SMS), calendar .ics generation",
+        "✅ Webhook processing: Resend delivery/open/click, Twilio status, Zoom attendance tracking",
+        "✅ Admin API: 12 endpoints (events, contacts, messages, analytics, webhooks monitoring)",
+        "❌ MISSING: Variable-timing logic (7-day → 2-day compression based on registration date)",
+        "❌ MISSING: Poll-driven personalization (Zoom poll responses → customized follow-up sequences)"
+      ],
+      "not_now": [
+        "Frontend page generation (handled by separate frontend project with Pinecone vector DB)",
+        "AI-powered ephemeral page creation (quiz responses → personalized landing pages)",
+        "Multi-CRM sync beyond Zoom (HubSpot/GoHighLevel integration deferred to v2.0)",
+        "Advanced segmentation (behavioral triggers, lead scoring automation)",
+        "White-label multi-tenant deployment (single-tenant Ceremonia deployment only for v1.0)"
+      ]
+    }
+  },
+  "system_on_a_page": {
+    "narrative": "User submits webinar registration form → POST /api/enrollments creates Contact + registers in Zoom → returns join URL → triggers Inngest event.enrolled → Pre-event funnel: Welcome email (immediate), 24h reminder (email+SMS), 1h reminder (email+SMS) → Webinar occurs → Zoom webhook POST /api/webhooks/zoom updates attended flag → triggers event.completed → Post-event funnel branches: Attended (thank you, resources T+24h, nurture T+3d) vs. No-show (sorry, re-engagement T+24h+SMS, final T+7d) → All messages logged to sent_messages with engagement tracking via Resend/Twilio webhooks → Admin dashboard queries analytics endpoints for funnel metrics.",
+    "ascii_diagram": "┌──────────────────────────────────────────────────────────────────────────┐\n│                         MYXELIUM BACKEND CONTEXT                         │\n└──────────────────────────────────────────────────────────────────────────┘\n\n[User/Marketing Team] ──POST enrollment──> (Next.js API)\n                                                │\n                                                ├──> (Supabase PostgreSQL)\n                                                │    - contacts\n                                                │    - events  \n                                                │    - registrations\n                                                │    - sent_messages\n                                                │    - webhook_events\n                                                │\n                                                ├──> (Zoom API)\n                                                │    - Create registration\n                                                │    - Return join URL\n                                                │\n                                                └──> (Inngest Event Queue)\n                                                     - event.enrolled trigger\n                                                     - Pre-event funnel\n                                                     - Post-event funnel\n                                                          │\n                                    ┌────────────────────┼────────────────────┐\n                                    │                    │                    │\n                                    ▼                    ▼                    ▼\n                              (Resend API)         (Twilio API)      (Calendar .ics)\n                              - Email delivery    - SMS delivery    - Google/Outlook\n                              - Opens/clicks      - Status tracking - Yahoo/Apple\n                                    │                    │\n                                    │                    │\n                                    ▼                    ▼\n                         POST /api/webhooks/resend  POST /api/webhooks/twilio\n                                    │                    │\n                                    └────────────────────┴──> Update sent_messages\n                                                              engagement metrics\n\n[Zoom Platform] ──Attendance Event──> POST /api/webhooks/zoom\n                                            │\n                                            └──> Update registrations.attended\n                                                 Trigger event.completed\n                                                 Branch post-event funnel\n\n[Admin Dashboard] ──GET requests──> /api/admin/*\n                                    - /events (list/details)\n                                    - /contacts (CRM)\n                                    - /messages (audit log)\n                                    - /analytics/overview\n                                    - /analytics/events/{id}\n                                    - /webhooks (monitoring)\n\nExternal Dependencies:\n- Supabase (Database + Auth)\n- Inngest (Job queue + orchestration)\n- Resend (Email provider)\n- Twilio (SMS provider)\n- Zoom (Meetings + Webinars API + Webhooks)\n- Vercel (Deployment platform - recommended)\n\nData Flow: Form → API → DB + Zoom → Inngest → Multi-channel delivery → Webhooks → Analytics"
+  },
+  "architecture": {
+    "nfrs": {
+      "performance": "p95 enrollment API < 800ms (Zoom API call dominant); p99 < 1.5s; Inngest message send < 200ms; Webhook processing < 300ms",
+      "scale": "Target: 100 events/month, 5k registrations/month, 50k messages/month; Autoscale 0→1k RPS in 60s (Vercel Edge); Inngest: 50 concurrent jobs/min (throttle limit)",
+      "availability": "SLO: 99.9% uptime over 30 days (43.2min downtime/month); Critical path: Enrollment API + Inngest event queue; Graceful degradation: SMS failures don't block email delivery",
+      "security": [
+        "OAuth 2.1 for Zoom API (Server-to-Server app, refresh tokens stored encrypted)",
+        "Webhook signature validation: Resend (HMAC-SHA256), Twilio (X-Twilio-Signature), Zoom (X-Zm-Signature)",
+        "Supabase RLS (Row Level Security) for contacts table (GDPR compliance)",
+        "Consent validation: Check consent.email/sms flags before sending messages",
+        "PII retention: 90 days for deleted_at contacts (soft delete), audit trail in activities table"
+      ],
+      "cost": "< $500/month at 5k registrations/month: Supabase Pro $25/mo, Inngest Free (< 50k steps), Resend $20/mo (50k emails), Twilio ~$200/mo (10k SMS @ $0.02/msg), Zoom Pro $15/mo, Vercel Pro $20/mo",
+      "compliance": [
+        "GDPR: Consent tracking in contacts.consent JSONB, soft delete with deleted_at, data export via admin API",
+        "CCPA: Contact data retrieval via GET /api/admin/contacts/{id}, deletion via soft delete flag",
+        "CAN-SPAM: Unsubscribe handling (status = 'unsubscribed'), marketing consent flag",
+        "Wellness/Medical: No medical claims in message templates (compliance namespace in frontend vector DB)"
+      ]
+    },
+    "containers": [
+      "Next.js API (Vercel deployment): /api/enrollments (public), /api/webhooks/* (Resend/Twilio/Zoom), /api/admin/* (12 endpoints), /api/inngest (Inngest webhook); Runtime: Node.js 20, serverless functions",
+      "Inngest Functions (Inngest Cloud): preEventFunnel (3-step sequence), postEventFunnel (branching logic), sendMessage (email/SMS dispatcher), sendResourcesEmail, sendNurtureEmail, sendReengagementMessage, sendFinalFollowup; 4 retries, 50 jobs/min throttle",
+      "Supabase PostgreSQL (Supabase Cloud): contacts (CRM core), events (platform-agnostic), registrations (contact-event junction), sent_messages (audit log), activities (timeline), message_templates, campaigns, webhook_events; Connection pooling: pgBouncer",
+      "Resend (Email SaaS): Email delivery, webhook callbacks (delivered, opened, clicked, bounced, complained); Rate limit: 10 emails/sec on Free tier",
+      "Twilio (SMS SaaS): SMS delivery, webhook callbacks (sent, delivered, failed, undelivered); Rate limit: 1 msg/sec default",
+      "Zoom (Video SaaS): Meetings + Webinars API (registration), webhooks (meeting.participant_joined, webinar.participant_joined); OAuth Server-to-Server app"
+    ],
+    "data_contracts": [
+      "Entity: Contact (id UUID, email TEXT UNIQUE, phone TEXT, consent JSONB, lifecycle_stage TEXT, lead_score INT, status TEXT); Owner: contacts table",
+      "Entity: Event (id UUID, title TEXT, scheduled_at TIMESTAMPTZ, platform TEXT, platform_event_id TEXT, status TEXT); Owner: events table",
+      "Entity: Registration (id UUID, contact_id UUID FK, event_id UUID FK, attended BOOLEAN, join_url TEXT, status TEXT); Owner: registrations table",
+      "Entity: SentMessage (id UUID, contact_id UUID FK, registration_id UUID FK, channel TEXT, template_type TEXT, status TEXT, engagement JSONB); Owner: sent_messages table",
+      "API: POST /api/enrollments (v1) - Input: {email, firstName, lastName, phone?, eventId, consent{email,sms,marketing}} - Output: {success, data{registrationId, contactId, joinUrl, message}} - Versioning: URL path (/api/v2/enrollments for breaking changes)",
+      "API: GET /api/admin/analytics/events/{id} (v1) - Output: {eventId, title, stats{registered, attended, noShow, attendanceRate}, engagement{emailsSent, emailsOpened, emailsClicked, smsSent, smsDelivered}} - Auth: TBD (currently open, needs JWT)",
+      "Event: event.enrolled (Inngest) - Schema: {contactId UUID, eventId UUID, registrationId UUID, eventTitle TEXT, scheduledAt ISO8601, contactEmail TEXT, contactFirstName TEXT, joinUrl TEXT} - Triggers: preEventFunnel",
+      "Event: event.completed (Inngest) - Schema: {eventId UUID, eventTitle TEXT, completedAt ISO8601} - Triggers: postEventFunnel (fetches registrations, branches on attended flag)",
+      "Event: message.send (Inngest) - Schema: {contactId UUID, registrationId UUID, campaignId UUID?, templateType TEXT, channel ENUM(email,sms), stepType TEXT} - Triggers: sendMessage function",
+      "Webhook: Resend Delivered - {type: 'email.delivered', data: {email_id, to, subject, delivered_at}} - Handler: POST /api/webhooks/resend - Updates: sent_messages.status = 'delivered', engagement.delivered_at",
+      "Webhook: Twilio Status - {MessageSid, MessageStatus ENUM(sent,delivered,failed), To, From, ErrorCode?} - Handler: POST /api/webhooks/twilio - Updates: sent_messages.status, engagement.error_code",
+      "Webhook: Zoom Participant Joined - {event: 'meeting.participant_joined', payload: {object: {participant: {email, join_time}}}} - Handler: POST /api/webhooks/zoom - Updates: registrations.attended = true, triggers event.completed"
+    ],
+    "runtime": [
+      "State Management: Inngest step.run() for idempotency (automatic retry with same step ID); Database transactions for enrollment (contact upsert + registration insert + Zoom API + Inngest trigger wrapped in try/catch)",
+      "Idempotency: Enrollment API uses email+eventId uniqueness constraint (ON CONFLICT DO UPDATE); Inngest functions auto-deduplicate via event ID; Webhook handlers check webhook_events.external_id before processing",
+      "Retries: Inngest 4 retries with exponential backoff (1s, 2s, 4s, 8s); Zoom API: 3 retries on 429/503 with exponential backoff; Resend/Twilio: SDK default retries (3x)",
+      "Timeouts: Next.js API routes: 10s serverless timeout (Vercel Hobby), 60s (Pro); Inngest functions: 5min max execution (Free tier), 1h (paid); Zoom API calls: 30s timeout",
+      "Circuit Breakers: None implemented (v1.0 relies on provider retries); Planned v2.0: Implement circuit breaker for Zoom API using inngest step error count",
+      "Caching: Supabase connection pooling via pgBouncer; No Redis cache (v1.0 stateless); Future: Cache contact consent flags in Redis for message validation (reduce DB queries)",
+      "Resilience Patterns: SMS failures logged but don't block email delivery (independent step.run()); Event cancellation sets events.status='cancelled', Inngest checks isEventValid() before sending reminders; Webhook replay: webhook_events table stores raw payload for manual replay"
+    ],
+    "observability": {
+      "logs": [
+        "Format: Structured JSON logs via console.log with [module] prefix (e.g., '[pre-event-funnel] Sending welcome email')",
+        "Destination: Vercel logs (stdout), Inngest dashboard (function execution logs), Supabase logs (database queries)",
+        "Retention: Vercel 1 day (Hobby), 30 days (Pro); Inngest 7 days (Free), 30 days (paid); Supabase 7 days"
+      ],
+      "metrics": [
+        "Golden Signals: Latency (p95/p99 enrollment API), Traffic (enrollments/hour), Errors (Inngest failed jobs, webhook errors), Saturation (Inngest throttle limit, Supabase connection pool)",
+        "Business Metrics: Funnel conversion (registered → attended → purchased), Email engagement (open rate, click rate), SMS delivery rate, Campaign completion rate",
+        "Sources: Inngest dashboard (job success/failure/duration), Supabase metrics (query performance, connection count), Resend analytics (delivery/open/click), Twilio console (SMS status)"
+      ],
+      "traces": [
+        "Distributed Tracing: Not implemented in v1.0 (Next.js + Inngest logs correlation via registrationId in log messages)",
+        "Planned v2.0: OpenTelemetry with Vercel integration, trace enrollment → Inngest trigger → message send → webhook callback using registrationId as trace ID"
+      ],
+      "dashboards": [
+        "Inngest Dashboard: Function execution timeline, retry history, error logs, throttle status (inngest.com/app)",
+        "Vercel Analytics: API route latency, invocation count, error rate (vercel.com/dashboard)",
+        "Admin API Dashboard: GET /api/admin/analytics/overview (total events, contacts, messages, engagement rates), GET /api/admin/analytics/events/{id} (funnel metrics per event)",
+        "Supabase Dashboard: Database metrics (query performance, active connections, table sizes), log explorer (supabase.com/dashboard)"
+      ],
+      "alerts": [
+        "SLO-Based Alerts (Planned v2.0): Email open rate < 15% for 24h → Slack alert; SMS delivery rate < 90% for 1h → PagerDuty; Inngest job failure rate > 5% → Slack",
+        "Current v1.0: Manual monitoring via Inngest dashboard (email on function failure), Vercel alerts (error rate > 5%), Supabase (database CPU > 80%)",
+        "Alert Policy: P0 (< 5min response): Enrollment API down, Inngest event queue blocked; P1 (< 1h): Email delivery failures, SMS failures; P2 (< 24h): Analytics inaccuracies, webhook replay needed"
+      ]
+    },
+    "security_privacy": [
+      "AuthN: Zoom OAuth 2.1 Server-to-Server (client credentials flow), tokens refreshed automatically via SDK; Supabase service role key for backend API access (stored in NEXT_PUBLIC_SUPABASE_SERVICE_ROLE_KEY env var)",
+      "AuthZ: Admin API currently OPEN (no authentication) - CRITICAL v1.0 gap; Planned v1.1: JWT authentication via Supabase Auth, role-based access (admin, viewer); Public enrollment API: Rate limit 100 req/min per IP (planned)",
+      "Secrets Management: Environment variables via Vercel (encrypted at rest), .env.local for local dev (gitignored); Secrets: Zoom client secret, Resend API key, Twilio auth token, Supabase service key, webhook signing keys; Rotation: Manual (no automated rotation in v1.0)",
+      "PII Classification: High: email, phone, first_name, last_name (contacts table); Medium: IP address in consent JSONB; Low: event titles, message templates; Encryption: Supabase at-rest encryption (AES-256), TLS 1.3 in-transit",
+      "Data Retention: Active contacts: indefinite; Soft-deleted (deleted_at set): 90 days, then hard delete via cron job (planned); sent_messages: 1 year retention; webhook_events: 30 days; activities: 2 years",
+      "Audit Trail: activities table logs all contact interactions (created, updated, enrolled, message_sent, message_opened, attended); webhook_events table logs all webhook deliveries with raw payload; sent_messages table logs all communications with engagement metrics",
+      "Threat Highlights: Open admin API (no auth) → CRITICAL; Webhook replay attacks (no timestamp validation) → MEDIUM; API key leakage (env vars in logs) → LOW (Vercel sanitizes); SQL injection via admin filters → MITIGATED (Supabase parameterized queries); GDPR non-compliance (no data export endpoint) → MEDIUM (manual export via SQL)"
+    ],
+    "delivery": [
+      "Branching Strategy: Trunk-based development (main branch), feature branches merged via PR with squash merge; No long-lived branches; Release tags: v1.0.0 (current), v1.1.0 (adaptive timing), v2.0.0 (poll integration)",
+      "CI/CD Pipeline: GitHub Actions (planned, not implemented in v1.0) - Steps: 1) npm install, 2) npm run lint, 3) npm test (428 tests, must pass 100%), 4) npm run build, 5) Vercel deploy (preview for PRs, production for main); Current: Manual Vercel deploy via CLI",
+      "Test Pyramid: Unit tests: 350 tests (lib modules - calendar, resend, twilio, zoom, inngest helpers); Integration tests: 50 tests (API routes with mocked DB/providers); Contract tests: 28 tests (Inngest function schemas, webhook payload validation); E2E: 0 tests (planned v1.1 - Playwright for enrollment → message delivery flow); Coverage: 96.3% (vitest --coverage)",
+      "Rollout Strategy: Blue-green deployment via Vercel (instant rollback); Feature flags: None in v1.0 (planned: Vercel Edge Config for adaptive timing toggle); Canary: 10% traffic to new version for 1h, monitor error rate, auto-rollback if > 2% errors",
+      "Release Cadence: Sprint-based (2 weeks), deploy to production on Fridays; Hotfix: Direct to main with expedited PR review (< 2h); Changelog: CHANGELOG.md (Keep a Changelog format), GitHub Releases",
+      "Deployment Checklist: 1) Run npm run test:coverage (must be > 95%), 2) Update CHANGELOG.md, 3) Tag release (git tag -a v1.x.x), 4) Merge to main, 5) Vercel auto-deploy, 6) Smoke test: POST /api/enrollments (test event), 7) Monitor Inngest dashboard for 1h, 8) Announce in #eng-deploys Slack"
+    ]
+  },
+  "decisions_risks": {
+    "adrs": [
+      {
+        "id": "ADR-001",
+        "title": "Use Inngest for job queue instead of BullMQ/Redis",
+        "status": "Accepted",
+        "consequence": "Serverless-friendly orchestration, built-in retries/observability, but vendor lock-in and free tier limits (50k steps/month); Cost scales with message volume"
+      },
+      {
+        "id": "ADR-002",
+        "title": "Supabase PostgreSQL for CRM instead of dedicated CRM (HubSpot API)",
+        "status": "Accepted",
+        "consequence": "Full control over schema, lower cost, but requires building admin UI; No native CRM features (deals, pipelines) in v1.0"
+      },
+      {
+        "id": "ADR-003",
+        "title": "Multi-channel in single message.send event vs. separate email.send/sms.send",
+        "status": "Accepted",
+        "consequence": "Unified message audit log, simpler Inngest function graph; Trade-off: Channel-specific retries require conditional logic in sendMessage function"
+      },
+      {
+        "id": "ADR-004",
+        "title": "Zoom-only event platform for v1.0 (defer Google Meet, Teams)",
+        "status": "Accepted",
+        "consequence": "Faster MVP delivery, 100% Ceremonia usage is Zoom; Technical debt: platform-agnostic events table requires adapter pattern for multi-platform support"
+      },
+      {
+        "id": "ADR-005",
+        "title": "No authentication on admin API for v1.0 (internal network only)",
+        "status": "Proposed",
+        "consequence": "CRITICAL RISK: Public exposure would leak all contact data; Must deploy with Vercel IP allowlist or add JWT auth in v1.1 before public launch"
+      },
+      {
+        "id": "ADR-006",
+        "title": "Fixed pre-event timing (T-24h, T-1h) instead of adaptive/variable timing",
+        "status": "Accepted",
+        "consequence": "Simpler v1.0 implementation; MISSING core value prop (7-day → 2-day compression); Requires refactor in v1.1 to calculate dynamic sleep times based on registration_date vs. scheduled_at"
+      },
+      {
+        "id": "ADR-007",
+        "title": "Attendance flag via Zoom webhook, not manual admin toggle",
+        "status": "Accepted",
+        "consequence": "Automatic branching, no manual intervention; Risk: Webhook delivery failures cause incorrect no-show classification; Mitigation: webhook_events replay mechanism"
+      }
+    ],
+    "risks": [
+      {
+        "risk": "CRITICAL: Admin API has no authentication; public exposure leaks all contacts, messages, analytics",
+        "impact": "GDPR violation, customer trust loss, potential $20M fine (4% revenue); Likelihood: HIGH if deployed without IP allowlist",
+        "mitigation": "IMMEDIATE: Add Vercel IP allowlist in deployment config (allow only Ceremonia office IPs); v1.1 (30 days): Implement JWT auth via Supabase Auth with admin role check; Validation: Pen test admin endpoints before public launch",
+        "owner": "Austin (CTO)"
+      },
+      {
+        "risk": "Variable-timing logic missing: Users registering < 24h before event receive messages AFTER event ends (core value prop unfulfilled)",
+        "impact": "Customer complaints, poor conversion, competitor advantage; Affects ~30% of registrations (late sign-ups); Revenue impact: $50k/year (3% conversion loss on 5k registrations)",
+        "mitigation": "v1.1 (90 days): Implement adaptive timing in preEventFunnel - calculate campaignDuration = min(scheduledAt - registeredAt, 7 days), adjust sleep times proportionally; Hypothesis: If campaign compresses to registration window, then post-event email rate drops from 40% to < 5%",
+        "owner": "Austin (Engineering)"
+      },
+      {
+        "risk": "Zoom webhook delivery failures cause incorrect attendance tracking; no-show users classified as attended or vice versa, triggering wrong post-event sequence",
+        "impact": "User experience degradation (attendees receive replay video, no-shows receive resources); Affects ~5% of events (Zoom webhook reliability); Conversion impact: 1-2% loss",
+        "mitigation": "Implement webhook retry mechanism: Store Zoom participant_joined events in webhook_events, manual replay via admin API; Add manual attendance override in admin UI (planned v1.2); Monitor Zoom webhook delivery rate via GET /api/admin/webhooks?provider=zoom",
+        "owner": "Austin (Engineering)"
+      },
+      {
+        "risk": "Inngest free tier limit (50k steps/month) exceeded at scale; throttle limit (50 jobs/min) causes message delays during peak registration windows",
+        "impact": "Cost jump from $0 to $200/month (paid tier); Message delays reduce conversion (1h reminder arrives 30min after event starts); Affects 10k+ registrations/month milestone",
+        "mitigation": "Monitor Inngest usage via dashboard; Upgrade to paid tier at 40k steps/month (80% threshold); Optimize step count: Combine 24h email+SMS into single step.run (reduces 2 steps → 1 per reminder); Validate: Load test with 1k concurrent enrollments",
+        "owner": "Austin (CTO) + Ceremonia Finance"
+      },
+      {
+        "risk": "No poll-response integration: Zoom poll data exists but doesn't trigger customized follow-ups; qualified leads (users answering 'yes' to offer) receive generic sequences",
+        "impact": "Missed conversion opportunity; Industry benchmark: Poll-driven personalization increases conversion by 3-5%; Revenue impact: $75k/year at 5k registrations",
+        "mitigation": "v2.0 (180 days): Add Zoom poll webhook handler (POST /api/webhooks/zoom/poll), store poll_responses JSONB in registrations table, branch postEventFunnel on poll answers; Hypothesis: If poll-yes users receive offer-focused nurture email, then conversion increases from 8% to 12%",
+        "owner": "Austin (Product) + Engineering"
+      }
+    ]
+  },
+  "plan_90d": [
+    {
+      "bet": "Adaptive Campaign Timing (Variable-Duration Drip)",
+      "hypothesis": "If we implement campaign compression logic (7-day → 2-day when user registers 48h before event), then post-event email rate will drop from 40% to < 5% because messages won't send after event ends, increasing effective engagement by 25%",
+      "metric": "Post-event email rate < 5% (measure: sent_messages where sent_at > events.scheduled_at); Campaign completion rate > 95% (all pre-event messages sent before scheduled_at)",
+      "owner": "Austin (Engineering)",
+      "eta": "2025-11-15",
+      "decision_point": "KILL if post-event email rate remains > 15% after 2-week A/B test (50% traffic to adaptive timing); SCALE if < 5% and user complaints drop by 80%"
+    },
+    {
+      "bet": "Admin API Authentication (JWT + RBAC)",
+      "hypothesis": "If we add Supabase JWT auth with admin role check to all /api/admin/* endpoints, then security audit pass rate will be 100% (vs. current FAIL on authentication), enabling public deployment without IP allowlist dependency",
+      "metric": "Security audit: PASS on admin API authentication (pen test by external firm); Zero unauthorized access attempts logged in 30 days post-launch; Admin API response time < 400ms (JWT validation overhead < 100ms)",
+      "owner": "Austin (Security/Engineering)",
+      "eta": "2025-10-30",
+      "decision_point": "MUST SHIP before public launch (blocker for Q1 2026); No kill criteria—required for compliance"
+    },
+    {
+      "bet": "Webhook Reliability Monitoring + Replay Mechanism",
+      "hypothesis": "If we add webhook_events table with manual replay endpoint (POST /api/admin/webhooks/{id}/replay), then webhook processing accuracy will increase from 95% to 99.5% because failed deliveries (Zoom, Resend, Twilio) can be manually retried within 24h window",
+      "metric": "Webhook replay usage: < 10 manual replays/month (target: < 1% of total webhooks); Attendance tracking accuracy: 99.5% (measure: manual overrides needed); Webhook delivery rate: 98%+ across all providers",
+      "owner": "Austin (Engineering)",
+      "eta": "2025-11-30",
+      "decision_point": "KILL if replay endpoint is unused for 30 days (indicates webhooks are reliable); SCALE to auto-replay if manual replay usage > 50/month"
+    },
+    {
+      "bet": "Production Hardening (Error Handling, Logging, Alerts)",
+      "hypothesis": "If we implement structured JSON logging, Sentry error tracking, and Slack alerts for critical failures (Inngest job failures, Zoom API errors), then mean-time-to-resolution (MTTR) for production issues will decrease from unknown (no monitoring) to < 30min because engineering team receives real-time alerts with context",
+      "metric": "MTTR for P0 incidents < 30min (measure: time from alert to fix deployed); Error detection latency < 5min (alert triggered within 5min of first error); False positive alert rate < 10%/month",
+      "owner": "Austin (DevOps/Engineering)",
+      "eta": "2025-12-15",
+      "decision_point": "KILL if alert fatigue occurs (> 50 false positives/month, team disables alerts); SCALE to auto-remediation (auto-restart failed Inngest jobs) if MTTR consistently < 15min"
+    },
+    {
+      "bet": "Load Testing + Inngest Optimization (Reduce Step Count)",
+      "hypothesis": "If we load test with 1k concurrent enrollments and optimize Inngest step count (combine 24h email+SMS into single step), then we can stay under 50k steps/month free tier limit at 5k registrations/month (vs. current projection of 60k steps), deferring paid tier upgrade by 6 months and saving $1,200/year",
+      "metric": "Inngest step count: < 10 steps/registration (current: 12 steps - welcome, 24h email, 24h SMS, 1h email, 1h SMS, 5 post-event); Monthly steps at 5k registrations: < 50k (free tier); Cost savings: $200/month deferred",
+      "owner": "Austin (Engineering/Finance)",
+      "eta": "2025-12-01",
+      "decision_point": "KILL optimization if step reduction breaks retry logic or causes SMS delivery failures > 5%; SCALE to paid tier if 5k registrations milestone reached before optimization shipped"
+    }
+  ],
+  "open_questions": [
+    "What is the authentication mechanism for admin API in production? JWT via Supabase Auth, API keys, or IP allowlist? (Blocks public deployment)",
+    "What is the target launch date for public deployment? Q1 2026 vs. Q2 2026 affects prioritization of adaptive timing (v1.1) vs. poll integration (v2.0)",
+    "What is the acceptable cost ceiling for Inngest paid tier upgrade? $200/month vs. $500/month determines load testing urgency and step optimization priority",
+    "What is the business metric for 'success' of adaptive timing feature? Conversion rate increase, user complaint reduction, or campaign completion rate? (Affects success criteria)",
+    "How will Ceremonia team access admin dashboard in production? Separate admin UI app, or API-only with Postman? (Affects v1.1 roadmap for admin UI)",
+    "What is the compliance requirement timeline for GDPR data export endpoint? Immediate (blocker for EU users) or deferred to v2.0? (Affects security roadmap)",
+    "What is the webhook replay SLA? Manual replay within 24h acceptable, or need auto-retry within 5min? (Affects reliability architecture)",
+    "What is the error budget for message delivery failures? 5% SMS failure rate acceptable, or need 99%+ delivery SLO? (Affects Twilio redundancy planning)"
+  ],
+  "assumptions": [
+    "Assumption: Ceremonia will handle < 100 events/month, 5k registrations/month in first 6 months (MEDIUM confidence - based on current manual HubSpot usage ~50 events/month; validate with Ceremonia finance forecast)",
+    "Assumption: Admin API will be accessed only by Ceremonia team (9 people) from office IPs, not public internet (HIGH confidence - confirmed in transcript 'internal use'; validate with security policy doc)",
+    "Assumption: 100% of Ceremonia events use Zoom platform, no Google Meet/Teams required for v1.0 (HIGH confidence - 'Ceremonia uses Zoom exclusively'; validate with ops team)",
+    "Assumption: Adaptive timing logic will use linear compression (7-day campaign → 2-day if registration is 2 days before event) vs. intelligent scheduling (HIGH confidence - simplest implementation; validate with product team for 'smart' timing requirements)",
+    "Assumption: Poll integration is v2.0 feature (post-launch), not v1.0 blocker (MEDIUM confidence - transcript says 'no poll integration yet'; validate with CEO on launch criteria)",
+    "Assumption: Email/SMS message templates will be managed manually in database, not via admin UI (MEDIUM confidence - no template editor in scope; validate with marketing team workflow)",
+    "Assumption: Frontend project will handle vector DB integration, not backend (HIGH confidence - separation of concerns per transcript; validate with frontend team on API contract needs)",
+    "Assumption: Supabase free tier sufficient for 5k contacts, 50k messages/month (MEDIUM confidence - need to validate Supabase storage limits and connection pool for concurrent Inngest jobs)",
+    "Assumption: SMS delivery failures are acceptable at 5-10% rate, won't require Twilio redundancy (LOW confidence - no SLA defined; validate with ops team on acceptable failure rate)"
+  ]
+}

@@ -1,30 +1,67 @@
-# Myxelium - Event Funnel Orchestration API
+# Myxelium - AI-Powered Event Funnel Automation Platform
 
 <div align="center">
 
-**Automated event enrollment and multi-channel drip campaigns for Zoom webinars**
+**SaaS platform for coaches & educators to create personalized, brand-consistent event funnels with adaptive timing**
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black?logo=next.js)](https://nextjs.org/)
 [![Tests](https://img.shields.io/badge/tests-412%20passing-success)](https://vitest.dev/)
 [![Coverage](https://img.shields.io/badge/coverage-96.3%25-brightgreen)](https://vitest.dev/)
 
-[Features](#-features) • [Quick Start](#-quick-start) • [API Reference](#-api-reference) • [Documentation](#-documentation) • [Architecture](#-architecture)
+[Vision](#-vision) • [Features](#-features) • [Quick Start](#-quick-start) • [API Reference](#-api-reference) • [Documentation](#-documentation)
 
 </div>
 
 ---
 
+## 🎯 Vision
+
+**Myxelium transforms event funnel management from manual CRM configuration to AI-powered automation.**
+
+### The Problem
+- **Manual funnel setup takes 6-12 hours** in HubSpot/GoHighLevel for every event
+- **Generic content** that doesn't match brand voice (AI tools hallucinate)
+- **Variable timing breaks funnels**: When someone registers 2 days before a webinar, 7-day campaigns send emails AFTER the event ends (40% waste rate)
+- **No behavioral intelligence**: Attendees and no-shows get identical follow-ups; poll responses never trigger personalized sequences
+
+### The Solution
+Myxelium enables coaches, educators, and small businesses to:
+- **Generate funnels in <1 hour** (vs. 6-12 hours) using AI agents
+- **AI-generated content** pulled from vector knowledge base (brand-consistent, zero hallucination)
+- **Adaptive timing**: 7-day campaigns auto-compress to 2-day when registration is 48h from event
+- **Behavioral branching**: Attended vs. no-show paths; poll responses trigger custom sequences
+- **CRM/EMS agnostic**: Works with any event platform (Zoom, GoToWebinar, in-person events, workshops, masterclasses)
+
+### Key Differentiators
+- ✅ **10x faster setup**: 45 minutes vs. 6-12 hours
+- ✅ **10x cheaper**: $29/month vs. $297-800/month (HubSpot/GoHighLevel)
+- ✅ **Adaptive timing** (unique to event funnels)
+- ✅ **AI content from vector DB** (not generic templates)
+- ✅ **Purpose-built** for coaches/educators (not enterprise CRM)
+
+**📄 Full Vision & Architecture Document:** [VISION_AND_ARCHITECTURE.md](./docs/vision/VISION_AND_ARCHITECTURE.md)
+
+---
+
 ## 📖 Overview
 
-Myxelium is a production-ready backend API that automates the entire event funnel lifecycle:
-- **Instant Enrollment**: Users submit form → automatically enrolled in Zoom (Meetings/Webinars) with unique join URL
-- **Pre-Event Drip**: Automated T-24h and T-1h reminders via email + SMS
+**Current State (Backend MVP):**
+Myxelium is a production-ready Next.js 15 API that automates event funnel orchestration with:
+- **Instant Enrollment**: Users register → automatically enrolled in event platform with unique join URL
+- **Pre-Event Drip**: Automated reminders via email + SMS with calendar invites
 - **Post-Event Branching**: Different sequences for attendees vs. no-shows
 - **Real-Time Tracking**: Monitor email opens, clicks, SMS delivery, and attendance
 - **Multi-Channel Delivery**: Email (Resend), SMS (Twilio), Calendar invites (.ics)
+- **Admin Dashboard**: 12 API endpoints for funnel monitoring and analytics
 
-Built for **Ceremonía** to power automated webinar funnels at scale.
+**Event Types Supported:**
+- Webinars (Zoom, GoToWebinar, WebinarJam)
+- In-person workshops and seminars
+- Virtual masterclasses and training sessions
+- Online challenges (5-day, 21-day, 30-day)
+- Course launch events
+- Membership onboarding sequences
 
 ---
 

@@ -1,0 +1,275 @@
+{
+  "last_updated": "2025-10-01",
+  "total_documents": 13,
+  "categories": {
+    "vision": {
+      "description": "Strategic vision, architecture, and product roadmap documentation",
+      "documents": [
+        {
+          "filename": "VISION_AND_ARCHITECTURE.md",
+          "path": "docs/vision/VISION_AND_ARCHITECTURE.md",
+          "version": "2.0.0",
+          "date": "2025-10-01",
+          "purpose": "Comprehensive vision and architecture document for Myxelium SaaS platform. Defines product thesis, target market (coaches/educators), technical architecture, NFRs, 90-day plan, risks, and competitive differentiation. Includes C4 diagrams, API contracts, and multi-tenant design patterns.",
+          "audience": ["Investors", "Engineering Leadership", "Product Team", "Prospective Customers"],
+          "format": "markdown",
+          "key_sections": [
+            "Executive Summary",
+            "Vision (Why & What)",
+            "System on a Page (C4 Context/Container)",
+            "Architecture Brief (NFRs, Observability, Security)",
+            "Decisions & Risks (ADRs, Top 5 Risks)",
+            "90-Day Plan (Hypothesis-Driven Bets)",
+            "Open Questions & Assumptions"
+          ]
+        },
+        {
+          "filename": "VISION_AND_ARCHITECTURE.json",
+          "path": "docs/vision/VISION_AND_ARCHITECTURE.json",
+          "version": "2.0.0",
+          "date": "2025-10-01",
+          "purpose": "Machine-readable JSON envelope of vision and architecture document for programmatic consumption, automation, and tooling integration.",
+          "audience": ["Engineering", "Automation Tools"],
+          "format": "json"
+        }
+      ]
+    },
+    "api": {
+      "description": "API endpoint documentation, schemas, and implementation guides",
+      "documents": [
+        {
+          "filename": "ADMIN_API.md",
+          "path": "docs/api/ADMIN_API.md",
+          "version": "1.0.0",
+          "date": "2025-10-01",
+          "purpose": "Comprehensive documentation for 12 admin API endpoints (events, contacts, messages, analytics, webhooks). Includes request/response schemas, cURL examples, authentication requirements, and use cases.",
+          "audience": ["Frontend Developers", "API Consumers", "DevOps"],
+          "format": "markdown",
+          "endpoints": [
+            "GET /api/admin/events",
+            "GET /api/admin/events/:id",
+            "POST /api/admin/events/:id/cancel",
+            "GET /api/admin/contacts",
+            "GET /api/admin/contacts/:id",
+            "GET /api/admin/messages",
+            "POST /api/admin/messages/send",
+            "GET /api/admin/analytics/overview",
+            "GET /api/admin/analytics/events/:id",
+            "GET /api/admin/webhooks"
+          ]
+        },
+        {
+          "filename": "ADMIN_API_IMPLEMENTATION.md",
+          "path": "docs/api/ADMIN_API_IMPLEMENTATION.md",
+          "version": "1.0.0",
+          "date": "2025-10-01",
+          "purpose": "Implementation details for admin API endpoints including database queries, business logic, error handling patterns, and integration with Resend/Twilio for manual message sending.",
+          "audience": ["Backend Engineers", "Code Reviewers"],
+          "format": "markdown",
+          "key_sections": [
+            "Implementation Patterns",
+            "Database Query Optimization",
+            "Error Handling",
+            "Testing Strategy",
+            "Security Considerations"
+          ]
+        }
+      ]
+    },
+    "integrations": {
+      "description": "Third-party service integration documentation and implementation guides",
+      "documents": [
+        {
+          "filename": "RESEND_INTEGRATION.md",
+          "path": "docs/integrations/RESEND_INTEGRATION.md",
+          "version": "1.0.0",
+          "date": "2025-10-01",
+          "purpose": "Resend email service integration guide covering email sending, attachment handling (calendar .ics), webhook processing (delivery/open/click events), and error handling.",
+          "audience": ["Backend Engineers", "DevOps"],
+          "format": "markdown",
+          "key_features": [
+            "Email sending via Resend API",
+            "Calendar .ics attachments (Base64 encoding)",
+            "Webhook signature validation",
+            "Delivery/open/click tracking",
+            "Error handling and retry logic"
+          ]
+        },
+        {
+          "filename": "TWILIO_INTEGRATION.md",
+          "path": "docs/integrations/TWILIO_INTEGRATION.md",
+          "version": "1.0.0",
+          "date": "2025-10-01",
+          "purpose": "Twilio SMS service integration guide covering SMS sending, webhook processing (delivery status), consent tracking, and TCPA compliance.",
+          "audience": ["Backend Engineers", "Compliance Officers"],
+          "format": "markdown",
+          "key_features": [
+            "SMS sending via Twilio API",
+            "Webhook signature validation",
+            "Delivery status tracking",
+            "Consent management (opt-in/opt-out)",
+            "TCPA compliance requirements"
+          ]
+        },
+        {
+          "filename": "TWILIO_CHECKLIST.md",
+          "path": "docs/integrations/TWILIO_CHECKLIST.md",
+          "version": "1.0.0",
+          "date": "2025-10-01",
+          "purpose": "Pre-launch checklist for Twilio SMS integration covering consent requirements, webhook configuration, testing, and compliance verification.",
+          "audience": ["Backend Engineers", "QA Engineers", "Compliance Officers"],
+          "format": "markdown",
+          "sections": [
+            "Consent Management",
+            "Webhook Configuration",
+            "Testing Procedures",
+            "Compliance Verification"
+          ]
+        },
+        {
+          "filename": "ZOOM_WEBHOOK_IMPLEMENTATION.md",
+          "path": "docs/integrations/ZOOM_WEBHOOK_IMPLEMENTATION.md",
+          "version": "1.0.0",
+          "date": "2025-10-01",
+          "purpose": "Zoom webhook integration for attendance tracking covering webhook validation, attendance data parsing, database updates, and post-event funnel triggering.",
+          "audience": ["Backend Engineers", "QA Engineers"],
+          "format": "markdown",
+          "key_features": [
+            "Webhook signature validation",
+            "Attendance data parsing (Meetings + Webinars)",
+            "Database updates (registrations.attended flag)",
+            "Inngest event triggering (event.completed)",
+            "Error handling and retry logic"
+          ]
+        },
+        {
+          "filename": "CALENDAR_INTEGRATION_SUMMARY.md",
+          "path": "docs/integrations/CALENDAR_INTEGRATION_SUMMARY.md",
+          "version": "1.0.0",
+          "date": "2025-10-01",
+          "purpose": "RFC 5545 compliant calendar integration covering .ics file generation, add-to-calendar links (Google/Outlook/Yahoo/Apple), and email attachment handling.",
+          "audience": ["Backend Engineers", "Frontend Developers"],
+          "format": "markdown",
+          "key_features": [
+            "RFC 5545 .ics generation",
+            "Add-to-calendar links (4 providers)",
+            "Base64 encoding for email attachments",
+            "CRLF line endings compliance",
+            "Timezone handling (IANA timezones)"
+          ]
+        }
+      ]
+    },
+    "implementation": {
+      "description": "Implementation summaries and technical deep-dives",
+      "documents": [
+        {
+          "filename": "INNGEST_IMPLEMENTATION_SUMMARY.md",
+          "path": "docs/implementation/INNGEST_IMPLEMENTATION_SUMMARY.md",
+          "version": "1.0.0",
+          "date": "2025-10-01",
+          "purpose": "Inngest job queue implementation summary covering drip campaign orchestration, pre/post-event sequences, retry logic, and adaptive timing patterns.",
+          "audience": ["Backend Engineers", "DevOps"],
+          "format": "markdown",
+          "key_features": [
+            "Pre-event drip (T+0h, T-24h, T-1h)",
+            "Post-event branching (attended vs. no-show)",
+            "Exponential backoff retry logic",
+            "Adaptive timing (future: 7-day → 2-day compression)",
+            "Multi-channel orchestration (email + SMS)"
+          ]
+        }
+      ]
+    },
+    "verification": {
+      "description": "Testing documentation, coverage reports, and verification checklists",
+      "documents": [
+        {
+          "filename": "CALENDAR_TEST_SUMMARY.md",
+          "path": "docs/verification/CALENDAR_TEST_SUMMARY.md",
+          "version": "1.0.0",
+          "date": "2025-10-01",
+          "purpose": "Calendar integration test coverage summary documenting 146 tests achieving 100% branch coverage across all calendar modules (helpers, ICS generator, links).",
+          "audience": ["QA Engineers", "Backend Engineers"],
+          "format": "markdown",
+          "coverage": {
+            "total_tests": 146,
+            "branch_coverage": "100%",
+            "statement_coverage": "100%",
+            "modules_tested": [
+              "lib/calendar/helpers.ts",
+              "lib/calendar/ics-generator.ts",
+              "lib/calendar/links.ts"
+            ]
+          }
+        },
+        {
+          "filename": "VERIFICATION_CHECKLIST.md",
+          "path": "docs/verification/VERIFICATION_CHECKLIST.md",
+          "version": "1.0.0",
+          "date": "2025-10-01",
+          "purpose": "Pre-launch verification checklist covering database schema, API endpoints, webhook configuration, environment variables, and integration testing.",
+          "audience": ["DevOps", "QA Engineers", "Backend Engineers"],
+          "format": "markdown",
+          "sections": [
+            "Database Schema Verification",
+            "API Endpoint Verification",
+            "Webhook Configuration",
+            "Environment Variables",
+            "Integration Testing"
+          ]
+        }
+      ]
+    },
+    "legacy": {
+      "description": "Legacy documentation and historical references",
+      "documents": [
+        {
+          "filename": "MYXELIUM_README.md",
+          "path": "docs/MYXELIUM_README.md",
+          "version": "1.0.0",
+          "date": "2025-10-01",
+          "purpose": "Legacy README from Ceremonia-specific implementation (pre-SaaS pivot). Retained for historical reference.",
+          "audience": ["Historical Reference"],
+          "format": "markdown",
+          "status": "deprecated"
+        }
+      ]
+    }
+  },
+  "documentation_standards": {
+    "versioning": "Semantic versioning (MAJOR.MINOR.PATCH) for all documentation",
+    "format": "Markdown preferred for readability; JSON for machine-readable data",
+    "update_frequency": "Index updated with every new document or major revision",
+    "required_metadata": [
+      "filename",
+      "path",
+      "version",
+      "date",
+      "purpose",
+      "audience",
+      "format"
+    ]
+  },
+  "quick_reference": {
+    "vision_and_roadmap": "docs/vision/VISION_AND_ARCHITECTURE.md",
+    "api_reference": "docs/api/ADMIN_API.md",
+    "setup_guides": {
+      "resend_email": "docs/integrations/RESEND_INTEGRATION.md",
+      "twilio_sms": "docs/integrations/TWILIO_INTEGRATION.md",
+      "zoom_webhooks": "docs/integrations/ZOOM_WEBHOOK_IMPLEMENTATION.md",
+      "calendar": "docs/integrations/CALENDAR_INTEGRATION_SUMMARY.md",
+      "inngest_jobs": "docs/implementation/INNGEST_IMPLEMENTATION_SUMMARY.md"
+    },
+    "testing": {
+      "coverage_summary": "docs/verification/CALENDAR_TEST_SUMMARY.md",
+      "verification_checklist": "docs/verification/VERIFICATION_CHECKLIST.md"
+    }
+  },
+  "contributing": {
+    "new_documents": "Add entry to this index.json with required metadata",
+    "version_updates": "Increment version number and update date field",
+    "deprecation": "Move to legacy category with 'deprecated' status",
+    "organization": "Place documents in appropriate category folder"
+  }
+}

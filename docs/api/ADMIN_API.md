@@ -14,14 +14,101 @@ Complete API reference for the Myxelium event funnel orchestration admin endpoin
 
 ## Authentication
 
-**Status:** Not implemented (MVP)
+**Status:** ✅ Implemented (JWT Authentication)
 
-All admin endpoints are currently unauthenticated and intended for internal use only.
+All admin endpoints require JWT authentication via Supabase Auth. Requests must include a valid Bearer token in the Authorization header.
 
-**Future Implementation:**
-- JWT token validation
-- API key authentication
-- Role-based access control (RBAC)
+### Authentication Flow
+
+1. **Obtain JWT Token:** Authenticate with Supabase to get a JWT token
+2. **Include Token:** Add token to `Authorization` header as `Bearer <token>`
+3. **Automatic Validation:** Middleware validates token and checks admin role
+4. **Access Granted:** If valid admin token, request proceeds to endpoint
+
+### Required Headers
+
+```
+Authorization: Bearer <your-jwt-token>
+```
+
+### Setting Up Admin Users
+
+Admin users must have the `role` field set to `admin` in their Supabase user metadata:
+
+**Option 1: Via Supabase Dashboard**
+1. Go to Authentication > Users
+2. Select user
+3. Update User Metadata: `{ "role": "admin" }`
+
+**Option 2: Via SQL (in Supabase SQL Editor)**
+```sql
+UPDATE auth.users
+SET raw_user_meta_data = raw_user_meta_data || '{"role": "admin"}'::jsonb
+WHERE email = 'admin@example.com';
+```
+
+**Option 3: Via Supabase Admin API**
+```bash
+curl -X PATCH 'https://<project-ref>.supabase.co/auth/v1/admin/users/<user-id>' \
+  -H "Authorization: Bearer <service-role-key>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_metadata": {
+      "role": "admin"
+    }
+  }'
+```
+
+### Error Responses
+
+**401 Unauthorized - Missing or Invalid Token**
+```json
+{
+  "error": "Unauthorized",
+  "message": "Missing authentication token",
+  "code": "MISSING_TOKEN"
+}
+```
+
+**401 Unauthorized - Invalid Token**
+```json
+{
+  "error": "Unauthorized",
+  "message": "Invalid or expired authentication token",
+  "code": "INVALID_TOKEN"
+}
+```
+
+**403 Forbidden - Insufficient Permissions**
+```json
+{
+  "error": "Forbidden",
+  "message": "Insufficient permissions. Admin role required.",
+  "code": "INSUFFICIENT_PERMISSIONS"
+}
+```
+
+### Example Authenticated Request
+
+```bash
+# Get your JWT token from Supabase Auth
+TOKEN="your-jwt-token-here"
+
+# Make authenticated request
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:3000/api/admin/events
+```
+
+### Feature Flag (Development Only)
+
+For development/testing purposes, authentication can be temporarily disabled:
+
+```bash
+# .env.local
+ADMIN_AUTH_ENABLED=false
+```
+
+**⚠️ WARNING:** Never disable authentication in production. This feature flag is for development only.
 
 ## Events API
 
@@ -70,7 +157,8 @@ Get a paginated list of all events with enrollment and attendance statistics.
 **Example:**
 
 ```bash
-curl http://localhost:3000/api/admin/events?status=upcoming&limit=10
+curl -H "Authorization: Bearer <your-token>" \
+  http://localhost:3000/api/admin/events?status=upcoming&limit=10
 ```
 
 ---
